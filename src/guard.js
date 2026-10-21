@@ -17,7 +17,7 @@ const DEFAULTS = {
   stopChord: 'alt+esc', // emergency stop keys (env WIN_INPUT_STOP_CHORD, meant for tests)
   overlay: true, // banner on screen while a tool runs
   humanMotion: true, // pointer glides along a curve instead of jumping
-  typeSpeed: 1, // default speed multiplier for typing waits (2 = half the waits, 0 = none); env WIN_INPUT_TYPE_SPEED
+  typeSpeed: 1, // default speed multiplier for typing waits (2 = half the waits, 0 = fixed 8 ms); env WIN_INPUT_TYPE_SPEED
   typeMinMs: 60,
   typeMaxMs: 200,
   typeCapMs: 60000, // longer texts are sped up to finish within this

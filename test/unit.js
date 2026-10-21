@@ -44,10 +44,10 @@ check('ctrl+v counts as content insertion', insertsContent(parseSequence('ctrl+v
   check('auth off: no prompt', seen.length === 0);
 
   const a = mk();
-  answers.push({ password: 'abc', confirm: 'abc', value: 24, unit: 'saat' }, { password: 'abcdef', confirm: 'abcxyz', value: 24, unit: 'saat' },
-    { password: 'abcdef', confirm: 'abcdef', value: 2, unit: 'saat', makeDefault: true });
+  answers.push({ password: 'abc', confirm: 'abc', value: 24, unit: 'hours' }, { password: 'abcdef', confirm: 'abcxyz', value: 24, unit: 'hours' },
+    { password: 'abcdef', confirm: 'abcdef', value: 2, unit: 'hours', makeDefault: true });
   await a.ensure();
-  check('first run asks to set a password (setup mode), retries short/mismatched ones', seen.length === 3 && seen.every((s) => s.mode === 'setup') && /6/.test(seen[1].message) && /ayni/.test(seen[2].message));
+  check('first run asks to set a password (setup mode), retries short/mismatched ones', seen.length === 3 && seen.every((s) => s.mode === 'setup') && /6/.test(seen[1].message) && /do not match/.test(seen[2].message));
   const stored = fs.readFileSync(file, 'utf8');
   check('only a hash is stored, never the password', !stored.includes('abcdef') && JSON.parse(stored).hash.length === 64);
   check('unlock lasts the chosen time', JSON.parse(stored).unlockedUntil === t + 120 * 60000 && JSON.parse(stored).defaultMinutes === 120, stored.slice(0, 0));
@@ -58,9 +58,9 @@ check('ctrl+v counts as content insertion', insertsContent(parseSequence('ctrl+v
   check('no prompt while unlocked (also across instances)', seen.length === 0);
 
   t += 121 * 60000;
-  answers.push({ password: 'nope', value: 1, unit: 'gun' }, { password: 'abcdef', value: 10, unit: 'dakika' });
+  answers.push({ password: 'nope', value: 1, unit: 'days' }, { password: 'abcdef', value: 10, unit: 'minutes' });
   await a.ensure();
-  check('after expiry asks again (unlock mode), wrong password retried, default duration offered', seen.length === 2 && seen[0].mode === 'unlock' && /Yanlis/.test(seen[1].message) && seen[0].value === 2 && seen[0].unit === 'saat');
+  check('after expiry asks again (unlock mode), wrong password retried, default duration offered', seen.length === 2 && seen[0].mode === 'unlock' && /Wrong password/.test(seen[1].message) && seen[0].value === 2 && seen[0].unit === 'hours');
   check('"make default" was not ticked, so the default stays', JSON.parse(fs.readFileSync(file, 'utf8')).defaultMinutes === 120);
 
   seen.length = 0;
@@ -69,15 +69,15 @@ check('ctrl+v counts as content insertion', insertsContent(parseSequence('ctrl+v
   check('closing the window refuses the tool', await fails(a) && seen.length === 1);
 
   seen.length = 0;
-  const slow = mk({ prompt: async (o) => { seen.push(o); t += 40000; return { password: 'nope', value: 1, unit: 'saat' }; } });
+  const slow = mk({ prompt: async (o) => { seen.push(o); t += 40000; return { password: 'nope', value: 1, unit: 'hours' }; } });
   check('wrong passwords until the 30 s window ends refuse the tool', await fails(slow) && seen.length === 1);
 
   seen.length = 0;
   let calls = 0;
-  const gate = mk({ prompt: async () => { calls++; await new Promise((r) => setTimeout(r, 50)); return { password: 'abcdef', value: 1, unit: 'gun' }; } });
+  const gate = mk({ prompt: async () => { calls++; await new Promise((r) => setTimeout(r, 50)); return { password: 'abcdef', value: 1, unit: 'days' }; } });
   await Promise.all([gate.ensure(), gate.ensure(), gate.ensure()]);
   check('parallel calls share one window', calls === 1);
-  check('unit maths', toMinutes(30, 'gun') === 43200 && toMinutes(10, 'dakika') === 10 && toMinutes(9999, 'gun') === 525600 && fromMinutes(1440).unit === 'saat' && fromMinutes(1440).value === 24 && fromMinutes(43200).unit === 'gun' && fromMinutes(90).unit === 'dakika');
+  check('unit maths', toMinutes(30, 'days') === 43200 && toMinutes(10, 'minutes') === 10 && toMinutes(9999, 'days') === 525600 && fromMinutes(1440).unit === 'hours' && fromMinutes(1440).value === 24 && fromMinutes(43200).unit === 'days' && fromMinutes(90).unit === 'minutes');
   fs.rmSync(file, { force: true });
 }
 

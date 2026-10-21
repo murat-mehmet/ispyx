@@ -125,7 +125,7 @@ export class Overlay {
     if (!this.enabled || this.stopped) return;
     this.active++;
     clearTimeout(this.timer);
-    this._show(`win-input-mcp çalışıyor: ${label}   |   Durdurmak için ${this.stopLabel}`);
+    this._show(`win-input-mcp is working: ${label}   |   To stop press ${this.stopLabel}`);
   }
 
   done() {
@@ -143,7 +143,7 @@ export class Overlay {
     if (!this.enabled) return;
     this.stopped = true;
     clearTimeout(this.timer);
-    this._show(`win-input-mcp DURDURULDU (${reason})`);
+    this._show(`win-input-mcp STOPPED (${reason})`);
     this.timer = setTimeout(() => this._hide(), 5000);
     this.timer.unref();
   }

@@ -396,41 +396,12 @@ export const mouseUp = (button = 'left') => send([mouseInput(BUTTONS[button][1])
 export const mouseWheel = (notches) => send([mouseInput(MOUSE.WHEEL, Math.round(notches * 120))]);
 export const mouseHWheel = (notches) => send([mouseInput(0x1000, Math.round(notches * 120))]); // positive = right
 
-// Notepad (and likely other XAML apps) mangle a single SendInput batch that mixes ASCII and non-ASCII
-// packets: the whole batch comes out as one repeated character. So each run of same-kind characters is
-// sent as its own batch with a short pause. Unicode packets do not depend on the keyboard layout.
+/**
+ * One character at a time with a pause after each (delays[i] ms, never under 8 ms), like a person typing.
+ * Text is never sent as one batch: apps drop and repeat characters then (Notepad also mangles a batch that
+ * mixes ASCII and non-ASCII). Unicode packets do not depend on the keyboard layout.
+ */
 export async function typeUnicode(text, check, delays) {
-  if (delays) return typeHuman(text, check, delays);
-  const runs = [];
-  for (const ch of text) {
-    if (ch === String.fromCharCode(13)) continue;
-    const kind = ch.charCodeAt(0) < 128 ? 'a' : 'u';
-    const last = runs[runs.length - 1];
-    if (last && last.kind === kind) last.chars.push(ch);
-    else runs.push({ kind, chars: [ch] });
-  }
-  for (let r = 0; r < runs.length; r++) {
-    const inputs = [];
-    for (const ch of runs[r].chars) {
-      if (ch === '\n') {
-        inputs.push(keyInput(0x0d, 0, 0), keyInput(0x0d, 0, 2));
-        continue;
-      }
-      for (let i = 0; i < ch.length; i++) {
-        const unit = ch.charCodeAt(i);
-        inputs.push(keyInput(0, unit, 0x4), keyInput(0, unit, 0x4 | 0x2));
-      }
-    }
-    for (let i = 0; i < inputs.length; i += 200) {
-      check?.(); // lets the stop hotkey abort a long text between batches
-      send(inputs.slice(i, i + 200));
-    }
-    if (r < runs.length - 1) await sleep(30);
-  }
-}
-
-/** One character at a time with a pause after each (delays[i] ms), like a person typing. */
-async function typeHuman(text, check, delays) {
   let i = 0;
   for (const ch of text) {
     if (ch === String.fromCharCode(13)) { i++; continue; }
@@ -445,7 +416,7 @@ async function typeHuman(text, check, delays) {
       }
     }
     send(inputs);
-    await sleep(delays[i++] ?? 0);
+    await sleep(Math.max(8, delays[i++] ?? 8));
   }
 }
 

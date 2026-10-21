@@ -11,7 +11,7 @@ import { ToolError } from './guard.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DIALOG = path.join(HERE, 'auth-dialog.ps1');
-const UNIT_MIN = { dakika: 1, saat: 60, gun: 1440 };
+const UNIT_MIN = { minutes: 1, hours: 60, days: 1440 };
 const MAX_MIN = 365 * 1440;
 const MIN_PASSWORD = 6;
 const ITER = 200000;
@@ -22,9 +22,9 @@ export const toMinutes = (value, unit) => Math.min(MAX_MIN, Math.max(1, Math.rou
 
 /** Minutes -> the largest whole unit it fits, for the dialog's initial value. */
 export function fromMinutes(min) {
-  if (min % 1440 === 0 && min >= 2880) return { value: min / 1440, unit: 'gun' };
-  if (min % 60 === 0) return { value: min / 60, unit: 'saat' };
-  return { value: min, unit: 'dakika' };
+  if (min % 1440 === 0 && min >= 2880) return { value: min / 1440, unit: 'days' };
+  if (min % 60 === 0) return { value: min / 60, unit: 'hours' };
+  return { value: min, unit: 'minutes' };
 }
 
 const hash = (pw, salt, iter) => crypto.pbkdf2Sync(pw, Buffer.from(salt, 'hex'), iter, 32, 'sha256').toString('hex');
@@ -88,14 +88,14 @@ export class Auth {
       if (r.cancel) throw new ToolError('Password was not entered (window closed or timed out), so the action was refused. Ask the user to enter it, then try again.');
       const pw = String(r.password ?? '');
       if (setup) {
-        if (pw.length < MIN_PASSWORD) { message = `Sifre en az ${MIN_PASSWORD} karakter olmali.`; continue; }
-        if (pw !== r.confirm) { message = 'Iki sifre ayni degil.'; continue; }
+        if (pw.length < MIN_PASSWORD) { message = `Password must be at least ${MIN_PASSWORD} characters.`; continue; }
+        if (pw !== r.confirm) { message = 'The two passwords do not match.'; continue; }
         const salt = crypto.randomBytes(16).toString('hex');
         Object.assign(data, { salt, iter: ITER, hash: hash(pw, salt, ITER) });
       } else {
         const a = Buffer.from(hash(pw, data.salt, data.iter), 'hex');
         const b = Buffer.from(data.hash, 'hex');
-        if (!crypto.timingSafeEqual(a, b)) { message = 'Yanlis sifre.'; continue; }
+        if (!crypto.timingSafeEqual(a, b)) { message = 'Wrong password.'; continue; }
       }
       const minutes = toMinutes(r.value, r.unit);
       data.unlockedUntil = this.now() + minutes * 60000;

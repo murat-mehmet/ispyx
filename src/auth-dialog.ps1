@@ -6,7 +6,7 @@ param(
   [string]$Message = '',
   [int]$Seconds = 30,
   [int]$Value = 24,
-  [string]$Unit = 'saat'
+  [string]$Unit = 'hours'
 )
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -34,14 +34,14 @@ function Add-Label($text, $x, $y, $w = 340, $h = 20, $name = '') {
 }
 
 $y = 12
-$title = if ($setup) { 'Ilk kurulum: bir sifre belirleyin. Araclar bu sifre olmadan calismaz.' } else { 'Bir arac cagrisi geldi. Devam etmek icin sifreyi girin.' }
+$title = if ($setup) { 'First setup: choose a password. The tools will not run without it.' } else { 'A tool call came in. Enter the password to continue.' }
 $null = Add-Label $title 20 $y 340 34 'title'
 $y += 38
 $msg = Add-Label $Message.Trim() 20 $y 340 18 'message'
 $msg.ForeColor = [System.Drawing.Color]::Firebrick
 $y += 22
 
-$null = Add-Label 'Sifre' 20 $y 80 20
+$null = Add-Label 'Password' 20 $y 80 20
 $pw = New-Object System.Windows.Forms.TextBox
 $pw.Name = 'password'; $pw.UseSystemPasswordChar = $true
 $pw.Location = New-Object System.Drawing.Point(110, ($y - 3)); $pw.Size = New-Object System.Drawing.Size(250, 24)
@@ -50,7 +50,7 @@ $y += 34
 
 $cf = $null
 if ($setup) {
-  $null = Add-Label 'Tekrar' 20 $y 80 20
+  $null = Add-Label 'Repeat' 20 $y 80 20
   $cf = New-Object System.Windows.Forms.TextBox
   $cf.Name = 'confirm'; $cf.UseSystemPasswordChar = $true
   $cf.Location = New-Object System.Drawing.Point(110, ($y - 3)); $cf.Size = New-Object System.Drawing.Size(250, 24)
@@ -58,21 +58,21 @@ if ($setup) {
   $y += 34
 }
 
-$null = Add-Label 'Ne kadar acik kalsin' 20 $y 130 20
+$null = Add-Label 'Stay unlocked for' 20 $y 130 20
 $num = New-Object System.Windows.Forms.NumericUpDown
 $num.Name = 'duration'; $num.Minimum = 1; $num.Maximum = 100000; $num.Value = [Math]::Max(1, $Value)
 $num.Location = New-Object System.Drawing.Point(155, ($y - 3)); $num.Size = New-Object System.Drawing.Size(70, 24)
 $form.Controls.Add($num)
 $unitBox = New-Object System.Windows.Forms.ComboBox
 $unitBox.Name = 'unit'; $unitBox.DropDownStyle = 'DropDownList'
-$null = $unitBox.Items.AddRange(@('dakika', 'saat', 'gun'))
-$unitBox.SelectedItem = $Unit; if ($unitBox.SelectedIndex -lt 0) { $unitBox.SelectedItem = 'saat' }
+$null = $unitBox.Items.AddRange(@('minutes', 'hours', 'days'))
+$unitBox.SelectedItem = $Unit; if ($unitBox.SelectedIndex -lt 0) { $unitBox.SelectedItem = 'hours' }
 $unitBox.Location = New-Object System.Drawing.Point(232, ($y - 3)); $unitBox.Size = New-Object System.Drawing.Size(80, 24)
 $form.Controls.Add($unitBox)
 $y += 30
 
 $chk = New-Object System.Windows.Forms.CheckBox
-$chk.Name = 'makeDefault'; $chk.Text = 'Bu sureyi yeni varsayilan yap'
+$chk.Name = 'makeDefault'; $chk.Text = 'Make this the new default'
 $chk.Location = New-Object System.Drawing.Point(20, $y); $chk.Size = New-Object System.Drawing.Size(340, 22)
 $form.Controls.Add($chk)
 $y += 30
@@ -81,20 +81,20 @@ $left = $Seconds
 $count = Add-Label '' 20 ($y + 4) 170 20 'countdown'
 $count.ForeColor = [System.Drawing.Color]::DimGray
 $ok = New-Object System.Windows.Forms.Button
-$ok.Name = 'ok'; $ok.Text = 'Tamam'; $ok.Location = New-Object System.Drawing.Point(200, $y); $ok.Size = New-Object System.Drawing.Size(75, 26)
+$ok.Name = 'ok'; $ok.Text = 'OK'; $ok.Location = New-Object System.Drawing.Point(200, $y); $ok.Size = New-Object System.Drawing.Size(75, 26)
 $ok.DialogResult = 'OK'; $form.AcceptButton = $ok; $form.Controls.Add($ok)
 $cancel = New-Object System.Windows.Forms.Button
-$cancel.Name = 'cancel'; $cancel.Text = 'Iptal'; $cancel.Location = New-Object System.Drawing.Point(285, $y); $cancel.Size = New-Object System.Drawing.Size(75, 26)
+$cancel.Name = 'cancel'; $cancel.Text = 'Cancel'; $cancel.Location = New-Object System.Drawing.Point(285, $y); $cancel.Size = New-Object System.Drawing.Size(75, 26)
 $cancel.DialogResult = 'Cancel'; $form.CancelButton = $cancel; $form.Controls.Add($cancel)
 
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 1000
 $timer.Add_Tick({
   $script:left--
-  $count.Text = "$($script:left) sn icinde kapanir"
+  $count.Text = "Closes in $($script:left) s"
   if ($script:left -le 0) { $form.DialogResult = 'Cancel'; $form.Close() }
 })
-$count.Text = "$left sn icinde kapanir"
+$count.Text = "Closes in $left s"
 $timer.Start()
 $form.Add_Shown({ $form.Activate(); $pw.Focus() })
 

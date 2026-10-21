@@ -51,7 +51,7 @@ $kids = foreach ($line in [W]::Children($form)) {
 $BM_CLICK = 0xF5; $WM_SETTEXT = 0xC
 function Button($text) { ($kids | Where-Object { $_.Cls -like '*BUTTON*' -and $_.Text -eq $text } | Select-Object -First 1).H }
 if ($Cancel) {
-  [void][W]::SendMessage((Button 'Iptal'), $BM_CLICK, [IntPtr]::Zero, [IntPtr]::Zero)
+  [void][W]::SendMessage((Button 'Cancel'), $BM_CLICK, [IntPtr]::Zero, [IntPtr]::Zero)
   Write-Output 'cancelled'; exit 0
 }
 # edits top to bottom: password, (confirm), then the number box's inner edit
@@ -60,6 +60,6 @@ $setup = $edits.Count -ge 3
 [void][W]::SendMessage($edits[0].H, $WM_SETTEXT, [IntPtr]::Zero, $Password)
 if ($setup) { [void][W]::SendMessage($edits[1].H, $WM_SETTEXT, [IntPtr]::Zero, $Confirm) }
 if ($Value -gt 0) { [void][W]::SendMessage($edits[$edits.Count - 1].H, $WM_SETTEXT, [IntPtr]::Zero, [string]$Value) }
-if ($MakeDefault) { [void][W]::SendMessage((Button 'Bu sureyi yeni varsayilan yap'), $BM_CLICK, [IntPtr]::Zero, [IntPtr]::Zero) }
-[void][W]::SendMessage((Button 'Tamam'), $BM_CLICK, [IntPtr]::Zero, [IntPtr]::Zero)
+if ($MakeDefault) { [void][W]::SendMessage((Button 'Make this the new default'), $BM_CLICK, [IntPtr]::Zero, [IntPtr]::Zero) }
+[void][W]::SendMessage((Button 'OK'), $BM_CLICK, [IntPtr]::Zero, [IntPtr]::Zero)
 Write-Output 'submitted'

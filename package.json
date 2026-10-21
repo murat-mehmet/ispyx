@@ -14,7 +14,8 @@
     "instagram-test": "node test/instagram.js",
     "motion-test": "node test/motion.js",
     "stop-test": "node test/stop.js",
-    "auth-test": "node test/auth.js"
+    "auth-test": "node test/auth.js",
+    "typing-test": "node test/typing.js"
   },
   "license": "UNLICENSED",
   "private": true,

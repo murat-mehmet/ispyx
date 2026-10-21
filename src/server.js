@@ -452,8 +452,8 @@ async function keyboardTarget(args, entry) {
 }
 
 server.registerTool('type_text', {
-  description: 'Type text into the focused control using Unicode key events, one character at a time at a human pace (random 60-200 ms per character; very long text is sped up to finish within 60 s, use set_clipboard + ctrl+v for bulk text). `speed` divides the waits: 1 = normal, 2 = twice as fast, 0.5 = half as fast, 0 = no waiting at all (everything at once). (Turkish and other non-ASCII characters work). Refused when the focused control is a password field. Pass hwnd/title to focus a window first; otherwise the current foreground window gets the text.',
-  inputSchema: { ...target, text: z.string().min(1), speed: z.number().min(0).max(100).optional().describe('Typing speed multiplier for the waits between characters. Default 1; 2 halves the waits, 0.5 doubles them, 0 = no waits.') },
+  description: 'Type text into the focused control using Unicode key events, one character at a time at a human pace (random 60-200 ms per character; very long text is sped up to finish within 60 s, use set_clipboard + ctrl+v for bulk text). `speed` divides the waits: 1 = normal, 2 = twice as fast, 0.5 = half as fast, 0 = a fixed 8 ms after every character (the fastest allowed; no wait is ever shorter, and text is never sent in one batch). The 60 s cap applies after `speed`. (Turkish and other non-ASCII characters work). Refused when the focused control is a password field. Pass hwnd/title to focus a window first; otherwise the current foreground window gets the text.',
+  inputSchema: { ...target, text: z.string().min(1), speed: z.number().min(0).max(100).optional().describe('Typing speed multiplier for the waits between characters. Default 1; 2 halves the waits, 0.5 doubles them, 0 = fixed 8 ms per character (fastest).') },
 }, action('type_text', async (args, entry) => {
   if (args.text.length > config.maxTypeLength) throw new ToolError(`Text is longer than ${config.maxTypeLength} characters. Use set_clipboard and ctrl+v for long text.`);
   await keyboardTarget(args, entry);
@@ -466,7 +466,7 @@ server.registerTool('type_text', {
   }
   guard.checkKill();
   const speed = args.speed ?? config.typeSpeed;
-  const delays = speed > 0 ? typingDelays(args.text, { min: config.typeMinMs, max: config.typeMaxMs, capMs: config.typeCapMs, speed }) : undefined;
+  const delays = typingDelays(args.text, { min: config.typeMinMs, max: config.typeMaxMs, capMs: config.typeCapMs, speed });
   const t0 = performance.now();
   await w.typeUnicode(args.text, () => guard.checkKill(), delays);
   return json({ ok: true, typed: args.text.length, ms: Math.round(performance.now() - t0), speed, keyboardLayout: '0x' + w.foregroundLayout().toString(16) });

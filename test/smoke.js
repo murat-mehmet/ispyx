@@ -74,7 +74,7 @@ try {
   let r = await call(client, 'focus_window', { hwnd });
   check('focus_window', !r.isError, JSON.stringify(r.data));
 
-  // 2. type Turkish text
+  // 2. type non-ASCII (Turkish) text
   r = await call(client, 'type_text', { hwnd, text: TEXT });
   check('type_text', !r.isError, r.isError ? r.data : 'layout ' + r.data.keyboardLayout);
   check('typing is human-paced (13 chars take well over 0.5 s)', !r.isError && r.data.speed === 1 && r.data.ms > 500 && r.data.ms < 6000, `${r.data.ms} ms`);
@@ -171,6 +171,22 @@ try {
   await c3.close();
   r = await call(client, 'screenshot_screen', { maxWidth: 800 });
   check('screenshot_screen', !r.isError && !!r.image);
+
+  // 8b. the fastest typing (speed 0 = fixed 8 ms, speed 100) must still arrive exactly, in this fresh tab
+  const FAST = 'Speed ğüşıöç test: the quick brown fox jumps over the lazy dog; Çalışkan öğrenci, İstanbul\'da yaşıyor. 0123456789 .,;:!? eeeeeeeeee ....... Ğ Ü Ş İ Ö Ç ok.';
+  for (const speed of [0, 100]) {
+    await call(client, 'press_keys', { hwnd, keys: 'ctrl+a' });
+    await call(client, 'press_keys', { hwnd, keys: 'delete' });
+    r = await call(client, 'type_text', { hwnd, text: FAST, speed });
+    await sleep(400);
+    await call(client, 'set_clipboard', { text: 'sentinel' });
+    await call(client, 'press_keys', { hwnd, keys: 'ctrl+a' });
+    await call(client, 'press_keys', { hwnd, keys: 'ctrl+c' });
+    await sleep(300);
+    const got = clipboard();
+    check(`${[...FAST].length} chars at speed ${speed} read back exactly`, !r.isError && got === FAST, `${r.data.ms} ms; ${got === FAST ? 'exact' : JSON.stringify(got)}`);
+    check(`speed ${speed}: at least 8 ms per character`, r.data.ms >= [...FAST].length * 8 - 20, `${r.data.ms} ms`);
+  }
 
   // 9. leave nothing behind: empty the tab, close it, then close the window
   await call(client, 'press_keys', { hwnd, keys: 'ctrl+a' });

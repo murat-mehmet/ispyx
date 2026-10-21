@@ -41,7 +41,11 @@ const check = (name, ok, detail = '') => {
   const base = sum(typingDelays('hello world', {}, seq()));
   const fast = sum(typingDelays('hello world', { speed: 2 }, seq()));
   const slow = sum(typingDelays('hello world', { speed: 0.5 }, seq()));
-  check('speed 2 halves the waits, 0.5 doubles them', Math.abs(fast - base / 2) < 12 && Math.abs(slow - base * 2) < 12, `${base} / ${fast} / ${slow} ms`);
+  const z = typingDelays('x'.repeat(50), { speed: 0 });
+  check('speed 0 is a fixed 8 ms per character', z.length === 50 && z.every((x) => x === 8));
+  check('no wait is under 8 ms, even at speed 100', typingDelays('hello world, again', { speed: 100 }).every((x) => x >= 8));
+  check('the 60 s cap holds after speed (speed 0.5)', sum(typingDelays('x'.repeat(2000), { capMs: 60000, speed: 0.5 })) <= 60500);
+  check('speed 2 halves the waits, 0.5 doubles them',Math.abs(fast - base / 2) < 12 && Math.abs(slow - base * 2) < 12, `${base} / ${fast} / ${slow} ms`);
 }
 
 // live: through the real server
