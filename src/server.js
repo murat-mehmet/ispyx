@@ -12,6 +12,7 @@ import { parseSequence, insertsContent } from './keys.js';
 import { curvedPath, ease, randomDuration, typingDelays } from './motion.js';
 import { Overlay } from './overlay.js';
 import { installStopHotkey } from './hotkey.js';
+import { Auth } from './auth.js';
 
 if (process.platform !== 'win32') {
   process.stderr.write('win-input-mcp only runs on Windows.\n');
@@ -23,6 +24,7 @@ const config = loadConfig();
 const guard = new Guard(config);
 const overlay = new Overlay({ enabled: config.overlay, stopLabel: guard.stopLabel });
 guard.overlay = overlay;
+const auth = new Auth({ enabled: config.auth, timeoutMs: config.authTimeoutMs, ...(config.authFile ? { file: config.authFile } : {}) });
 guard.startWatching();
 if (guard.stopIsDefault) installStopHotkey((reason) => guard.trigger(reason)); // the hook is Alt+Esc only
 
@@ -57,6 +59,8 @@ function action(name, handler, { session = true } = {}) {
     const entry = { tool: name, args: redact(name, args) };
     const shown = !QUIET.has(name);
     try {
+      guard.checkKill();
+      await auth.ensure();
       guard.checkKill();
       if (session) guard.checkSession();
       if (shown) overlay.begin(name);
@@ -199,9 +203,9 @@ server.registerTool('list_windows', {
 }, action('list_windows', async (args) => {
   const list = w.listWindows({ includeUntitled: !!args.includeUntitled }).map((x) => ({
     hwnd: x.hwnd, title: x.title, className: x.className, process: x.process, rect: x.rect,
-    minimized: x.minimized, allowed: guard.allowed(x), elevated: x.elevated,
+    minimized: x.minimized, allowed: !guard.denied(x), elevated: x.elevated,
   }));
-  return json({ global: config.global, allowlist: config.allowlist, denylist: config.denylist, foreground: w.foregroundWindow(), windows: list });
+  return json({ denylist: config.denylist, foreground: w.foregroundWindow(), windows: list });
 }, { session: false }));
 
 server.registerTool('list_monitors', {
@@ -582,6 +586,6 @@ server.registerTool('set_clipboard', {
 // ---------------------------------------------------------------- run
 
 await server.connect(new StdioServerTransport());
-guard.log({ tool: 'server_start', global: config.global, allowlist: config.allowlist, denylist: config.denylist, pid: process.pid });
+guard.log({ tool: 'server_start', auth: config.auth, denylist: config.denylist, pid: process.pid });
 process.on('exit', () => guard.releaseAll());
 process.stdin.on('close', () => { guard.releaseAll(); process.exit(0); });

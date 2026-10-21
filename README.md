@@ -30,8 +30,7 @@ Any MCP client (JSON form):
   "mcpServers": {
     "win-input": {
       "command": "node",
-      "args": ["G:\\win-input-mcp\\src\\server.js"],
-      "env": { "WIN_INPUT_ALLOWLIST": "chrome.exe,msedge.exe" }
+      "args": ["G:\\win-input-mcp\\src\\server.js"]
     }
   }
 }
@@ -39,22 +38,27 @@ Any MCP client (JSON form):
 
 ## Modes and config
 
-Two modes, set by `global` in the config:
-
-| Mode | Behaviour |
-| --- | --- |
-| **global** (default) | Works like a person at the computer: any window, the taskbar, any monitor, in absolute desktop coordinates. Only the `denylist` is refused. |
-| **restricted** (`"global": false`) | An action runs only on a window whose process is in `allowlist` (default `chrome.exe`, `msedge.exe`); anything else is refused with an error. |
-
-`denylist` applies in both modes (default: `keepass.exe`, `keepassxc.exe`, `1password.exe`, `bitwarden.exe`, so password managers are never driven).
+The server always works like a person at the computer: any window, the taskbar, any monitor, in absolute desktop coordinates. There is no per-window allowlist. The only refusal list is `denylist` (default: `keepass.exe`, `keepassxc.exe`, `1password.exe`, `bitwarden.exe`, so password managers are never driven).
 
 Settings, later wins:
 
-1. `config.json` in the project root (see `config.example.json`): `{ "global": true, "allowlist": [...], "denylist": [...], "logPath": "logs/actions.jsonl" }`
+1. `config.json` in the project root (see `config.example.json`): `{ "denylist": [...], "logPath": "logs/actions.jsonl", "auth": false }`
 2. A config file elsewhere, via env `WIN_INPUT_MCP_CONFIG=<path>`
-3. Env: `WIN_INPUT_GLOBAL=0|1`, `WIN_INPUT_ALLOWLIST=chrome.exe,msedge.exe` (naming an allowlist this way also switches to restricted mode unless `WIN_INPUT_GLOBAL` says otherwise), `WIN_INPUT_DENYLIST=a.exe,b.exe`, `WIN_INPUT_LOG=<path>`
+3. Env: `WIN_INPUT_DENYLIST=a.exe,b.exe`, `WIN_INPUT_LOG=<path>`, `WIN_INPUT_AUTH=0|1`
 
 Other keys: `maxTypeLength` (default 10000).
+
+## Password gate (optional)
+
+`auth` is **false** by default. Set `"auth": true` (or `WIN_INPUT_AUTH=1`) and the first tool call opens a small password window (always on top):
+
+- **First time:** you choose a password (at least 6 characters, typed twice). Only a salted PBKDF2 hash is stored, in `%APPDATA%\win-input-mcp\auth.json` (not in the project).
+- **Every time it is locked:** enter the password and pick **how long to stay unlocked**: a number plus minutes / hours / days (default 24 hours, up to 365 days). Tick **"make this the new default"** to remember the choice. Wrong passwords are asked again in the same window.
+- **No answer in 30 seconds:** the window closes by itself and the tool returns a plain error ("Password was not entered ..."). The next call asks again.
+- **Unlocked:** no window, no questions, until the time runs out. The unlock time lives in `auth.json`, so a restart of the server, or a second server, does not ask again. Parallel tool calls share one window.
+- **Forgot the password / want to reset:** delete `%APPDATA%\win-input-mcp\auth.json`. To lock now, set `unlockedUntil` in it to 0 or delete it.
+- `resume` (the stop-clearing tool) is not behind the gate.
+- `npm run auth-test` drives the real window (temp file only); the unit tests cover the logic.
 
 ## Human-like pointer motion
 
@@ -94,7 +98,7 @@ The server runs per-monitor DPI aware (v2): screenshots, clicks and cursor readi
 
 | Tool | Notes |
 | --- | --- |
-| `list_windows` | Visible top-level windows including the taskbar (`Shell_TrayWnd`): hwnd, title, class, process, rect, allowed, elevated; `includeUntitled` for all. |
+| `list_windows` | Visible top-level windows including the taskbar (`Shell_TrayWnd`): hwnd, title, class, process, rect, allowed (false = denylisted), elevated; `includeUntitled` for all. |
 | `list_monitors`, `cursor_position` | Monitor rectangles + virtual desktop bounds; pointer position. |
 | `focus_window` | Any window outside the denylist: restores if minimized, brings to front (AttachThreadInput and Alt-key workarounds for the foreground lock). |
 | `screenshot_window` | One window via `PrintWindow(PW_RENDERFULLCONTENT)`. Returns PNG + `scale` + `rect`. Optional `region` {x, y, width, height} crops inside the window (window pixels from its top-left, before `maxWidth` scaling; clamped to the window, error if fully outside; `maxWidth` applies to the crop) and is echoed back clamped. **Mapping back:** the server remembers the crop origin and scale of the last `screenshot_window` per hwnd, so pointer tools with `space: "window"` and that hwnd take coordinates in the cropped image directly (no `region` on the pointer tools). A later uncropped shot resets it. |
@@ -116,7 +120,7 @@ Typical flow: `screenshot_screen` → read coordinates off the image → `click`
 - **Emergency stop:** Alt+Esc is the only stop (there is no mouse-corner switch). Every action is refused and held keys and buttons are released, until the user tells the agent to continue and it calls `resume` (or the server restarts).
 - **Password fields:** `type_text` (and paste chords) are refused when the focused control is a password field (Win32 `ES_PASSWORD` and UI Automation `IsPassword`, which covers browser fields). If the check cannot run, the action is refused.
 - **No credentials:** the server never reads, stores or types saved passwords, and drives no password manager (default denylist). Log in yourself.
-- **Plain errors** for: foreground lock refused, window minimized / not capturable, elevated target (UIPI), locked screen, kill switch, denied or not allowlisted.
+- **Plain errors** for: foreground lock refused, window minimized / not capturable, elevated target (UIPI), locked screen, emergency stop, password not entered, denylisted program.
 
 ## What is impossible (Windows rules)
 
@@ -140,7 +144,7 @@ npm run smoke   # drives the real server over stdio against a fresh Notepad tab
 npm run chrome-test   # Chrome end-to-end: Google search through the server (see below)
 npm run stop-test     # banner shows, is click-through; Alt+Esc aborts a running tool and blocks later calls
 npm run motion-test   # pointer glides along a curve in 300-1000 ms, lands exactly
-npm run instagram-test # global mode: new Chrome window, scroll checks, Instagram login page (look only)
+npm run instagram-test # new Chrome window, scroll checks, Instagram login page (look only)
 ```
 
 The smoke test opens Notepad, opens a **new tab** (Notepad restores your earlier tabs, which must stay untouched), types `Merhaba ğüşıöç`, `ctrl+a`, checks the text by copying it back, takes a screenshot, verifies that `move` lands on the mapped screen pixel, drags across the text and checks the selection is a prefix of it, checks that a non-allowlisted window is refused, empties and closes the tab and the window, then checks the kill switch with a second server instance. Notepad is added to the allowlist for the test only. Screenshots are written to `test/out/`.
@@ -164,7 +168,7 @@ Limits found:
 
 ### Instagram login-page test (`npm run instagram-test`)
 
-Runs the server in **global mode**. Opens a new Chrome window with a global middle-click on the taskbar button, then:
+Opens a new Chrome window with a global middle-click on the taskbar button, then:
 
 - scroll check on a local `data:` page (4000x3000 colour field): vertical and horizontal scroll, in global coordinates, both directions, verified by pixel colour from `screenshot_screen` regions
 - opens `https://www.instagram.com/accounts/login/`, waits for the title, saves a global screenshot (`test/out/instagram-login.png`) and reads the page through UI Automation (`test/ui-text.ps1`, read-only, no field values): asserts Instagram in title/URL/page, a username field, a password field and a log-in button

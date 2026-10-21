@@ -43,7 +43,7 @@ const client = new Client({ name: 'motion-test', version: '1' });
 await client.connect(new StdioClientTransport({
   command: process.execPath,
   args: [path.join(ROOT, 'src', 'server.js')],
-  env: { ...process.env, WIN_INPUT_GLOBAL: '1', WIN_INPUT_ALLOWLIST: '', WIN_INPUT_LOG: path.join(os.tmpdir(), `win-input-mcp-motion-${Date.now()}.jsonl`) },
+  env: { ...process.env, WIN_INPUT_AUTH: '0', WIN_INPUT_LOG: path.join(os.tmpdir(), `win-input-mcp-motion-${Date.now()}.jsonl`) },
 }));
 const call = (name, args) => client.callTool({ name, arguments: args });
 

@@ -1,4 +1,4 @@
-// Safety layer: config, process allowlist, kill switch, action log.
+// Safety layer: config, process denylist, emergency stop, action log.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,10 +11,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export class ToolError extends Error {}
 
 const DEFAULTS = {
-  // global: true  -> act anywhere on the desktop (denylist still applies)
-  // global: false -> act only inside windows of the allowlisted programs
-  global: true,
-  allowlist: ['chrome.exe', 'msedge.exe'],
+  // acts anywhere on the desktop; only the denylist (password managers) is refused
   denylist: ['keepass.exe', 'keepassxc.exe', '1password.exe', 'bitwarden.exe'],
   logPath: path.join(ROOT, 'logs', 'actions.jsonl'),
   stopChord: 'alt+esc', // emergency stop keys (env WIN_INPUT_STOP_CHORD, meant for tests)
@@ -27,6 +24,9 @@ const DEFAULTS = {
   moveMinMs: 300,
   moveMaxMs: 1000,
   maxTypeLength: 10000,
+  auth: false, // ask for a password (src/auth.js) before the first tool call; env WIN_INPUT_AUTH
+  authTimeoutMs: 30000, // how long the password window waits
+  authFile: '', // where the password hash and unlock time live; default %APPDATA%\win-input-mcp\auth.json
 };
 
 export function loadConfig(env = process.env) {
@@ -39,22 +39,18 @@ export function loadConfig(env = process.env) {
       throw new Error(`Config file ${file} is not valid JSON: ${e.message}`);
     }
   }
-  if (env.WIN_INPUT_ALLOWLIST) {
-    cfg.allowlist = env.WIN_INPUT_ALLOWLIST.split(',');
-    cfg.global = false; // naming an allowlist in the environment means "restrict to these"
-  }
   if (env.WIN_INPUT_DENYLIST) cfg.denylist = env.WIN_INPUT_DENYLIST.split(',');
-  if (env.WIN_INPUT_GLOBAL) cfg.global = !/^(0|false|no)$/i.test(env.WIN_INPUT_GLOBAL);
-  cfg.global = !!cfg.global;
   // test-only knob: lets a test server use its own stop chord, so tests never press Alt+Esc,
   // which would also stop every other running server
   if (env.WIN_INPUT_STOP_CHORD) cfg.stopChord = env.WIN_INPUT_STOP_CHORD;
+  if (env.WIN_INPUT_AUTH) cfg.auth = !/^(0|false|no)$/i.test(env.WIN_INPUT_AUTH);
+  if (env.WIN_INPUT_AUTH_FILE) cfg.authFile = env.WIN_INPUT_AUTH_FILE;
+  if (env.WIN_INPUT_AUTH_TIMEOUT_MS) cfg.authTimeoutMs = Number(env.WIN_INPUT_AUTH_TIMEOUT_MS); // test-only
   if (env.WIN_INPUT_HUMAN_TYPING) cfg.humanTyping = !/^(0|false|no)$/i.test(env.WIN_INPUT_HUMAN_TYPING);
   if (env.WIN_INPUT_OVERLAY) cfg.overlay = !/^(0|false|no)$/i.test(env.WIN_INPUT_OVERLAY);
   if (env.WIN_INPUT_HUMAN_MOTION) cfg.humanMotion = !/^(0|false|no)$/i.test(env.WIN_INPUT_HUMAN_MOTION);
   cfg.denylist = cfg.denylist.map((s) => String(s).trim().toLowerCase()).filter(Boolean);
   if (env.WIN_INPUT_LOG) cfg.logPath = env.WIN_INPUT_LOG;
-  cfg.allowlist = cfg.allowlist.map((s) => String(s).trim().toLowerCase()).filter(Boolean);
   cfg.logPath = path.resolve(ROOT, cfg.logPath);
   return cfg;
 }
@@ -121,12 +117,6 @@ export class Guard {
     return !!win.process && this.config.denylist.includes(win.process);
   }
 
-  allowed(win) {
-    if (this.denied(win)) return false;
-    if (this.config.global) return true;
-    return !!win.process && this.config.allowlist.includes(win.process);
-  }
-
   /** Release anything this server still holds down (kill switch, shutdown, errors). */
   releaseAll() {
     try {
@@ -144,9 +134,6 @@ export class Guard {
     }
     if (this.denied(win)) {
       throw new ToolError(`Refused: "${win.title}" belongs to ${win.process}, which is on the denylist.`);
-    }
-    if (!this.allowed(win)) {
-      throw new ToolError(`Refused: "${win.title}" belongs to ${win.process}, which is not on the allowlist (${this.config.allowlist.join(', ')}).`);
     }
     if (win.elevated && !w.selfIsElevated()) {
       throw new ToolError(`"${win.title}" is running as administrator, and Windows blocks input from a normal program to an elevated window. Run it without elevation, or start this server elevated.`);
@@ -166,7 +153,7 @@ export class Guard {
       const q = title.toLowerCase();
       const hits = w.listWindows().filter((x) => x.title.toLowerCase().includes(q));
       if (!hits.length) throw new ToolError(`No visible window title contains "${title}". Call list_windows to see what is open.`);
-      return hits.find((x) => this.allowed(x)) || hits[0];
+      return hits.find((x) => !this.denied(x)) || hits[0];
     }
     if (this.lastWindow && w.windowExists(this.lastWindow)) return w.describeWindow(this.lastWindow);
     const fg = w.foregroundWindow();
@@ -206,7 +193,7 @@ export class Guard {
     return { sx, sy };
   }
 
-  /** Whatever window sits under a screen point must be usable (allow/deny lists, elevation). */
+  /** Whatever window sits under a screen point must be usable (denylist, elevation). */
   assertPointUsable(sx, sy) {
     const top = w.rootWindowAt(sx, sy);
     if (!top) return null;
@@ -226,7 +213,6 @@ export class Guard {
 
   async focus(win) {
     if (this.denied(win)) this.assertUsable(win, { needVisible: false });
-    if (!this.config.global) this.assertUsable(win, { needVisible: false });
     const ok = await w.bringToForeground(win.hwnd);
     if (!ok) {
       throw new ToolError(`Windows refused to bring "${win.title}" to the front (foreground lock). Click the window yourself once, then retry.`);
@@ -234,7 +220,7 @@ export class Guard {
     this.lastWindow = win.hwnd;
   }
 
-  /** Make `win` the foreground window and verify the allowlist against what is really in front. */
+  /** Make `win` the foreground window and verify the denylist against what is really in front. */
   async prepareKeyboard(win) {
     await this.focus(win);
     const fg = w.describeWindow(w.foregroundWindow());

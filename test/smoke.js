@@ -32,7 +32,7 @@ function launch(extraEnv = {}) {
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [path.join(ROOT, 'src', 'server.js')],
-    env: { ...process.env, WIN_INPUT_ALLOWLIST: 'chrome.exe,msedge.exe,notepad.exe', WIN_INPUT_LOG: LOG, ...extraEnv },
+    env: { ...process.env, WIN_INPUT_AUTH: '0', WIN_INPUT_LOG: LOG, ...extraEnv },
   });
   return client.connect(transport).then(() => client);
 }
@@ -165,11 +165,10 @@ try {
   check('without region nothing changes (no region field, full size)', !r.isError && r.data.region === undefined && r.data.width === Math.min(1280, r.data.rect.width));
 
   // 8. refusals
-  const explorer = (await call(client, 'list_windows')).data.windows.find((x) => x.process === 'explorer.exe');
-  if (explorer) {
-    r = await call(client, 'click', { hwnd: explorer.hwnd, x: 10, y: 10 });
-    check('non-allowlisted window refused', r.isError && /allowlist/.test(r.data), r.data);
-  }
+  const c3 = await launch({ WIN_INPUT_DENYLIST: 'notepad.exe' });
+  r = await call(c3, 'click', { hwnd, x: 10, y: 10 });
+  check('denylisted program refused', r.isError && /denylist/.test(r.data), r.data);
+  await c3.close();
   r = await call(client, 'screenshot_screen', { maxWidth: 800 });
   check('screenshot_screen', !r.isError && !!r.image);
 

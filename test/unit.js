@@ -26,6 +26,61 @@ check('parse two chords', parseSequence('ctrl+a ctrl+c').length === 2);
 check('win key parses', parseSequence('win+r')[0][0] === 0x5b);
 check('ctrl+v counts as content insertion', insertsContent(parseSequence('ctrl+v')[0]) && !insertsContent(parseSequence('ctrl+a')[0]));
 
+// password gate (fake prompt and clock, temp file; no window)
+{
+  const { Auth, toMinutes, fromMinutes } = await import('../src/auth.js');
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const pathMod = await import('node:path');
+  const file = pathMod.join(os.tmpdir(), `win-input-auth-${Date.now()}.json`);
+  let t = 1_000_000;
+  const answers = [];
+  const seen = [];
+  const prompt = async (opts, ms) => { seen.push({ ...opts, ms }); t += 1000; return answers.shift() ?? { cancel: true }; };
+  const mk = (extra = {}) => new Auth({ enabled: true, file, timeoutMs: 30000, prompt, now: () => t, ...extra });
+  const fails = async (a) => { try { await a.ensure(); return false; } catch { return true; } };
+
+  await new Auth({ enabled: false, file, prompt, now: () => t }).ensure();
+  check('auth off: no prompt', seen.length === 0);
+
+  const a = mk();
+  answers.push({ password: 'abc', confirm: 'abc', value: 24, unit: 'saat' }, { password: 'abcdef', confirm: 'abcxyz', value: 24, unit: 'saat' },
+    { password: 'abcdef', confirm: 'abcdef', value: 2, unit: 'saat', makeDefault: true });
+  await a.ensure();
+  check('first run asks to set a password (setup mode), retries short/mismatched ones', seen.length === 3 && seen.every((s) => s.mode === 'setup') && /6/.test(seen[1].message) && /ayni/.test(seen[2].message));
+  const stored = fs.readFileSync(file, 'utf8');
+  check('only a hash is stored, never the password', !stored.includes('abcdef') && JSON.parse(stored).hash.length === 64);
+  check('unlock lasts the chosen time', JSON.parse(stored).unlockedUntil === t + 120 * 60000 && JSON.parse(stored).defaultMinutes === 120, stored.slice(0, 0));
+
+  seen.length = 0;
+  await a.ensure();
+  await mk().ensure(); // another server instance reads the same file
+  check('no prompt while unlocked (also across instances)', seen.length === 0);
+
+  t += 121 * 60000;
+  answers.push({ password: 'nope', value: 1, unit: 'gun' }, { password: 'abcdef', value: 10, unit: 'dakika' });
+  await a.ensure();
+  check('after expiry asks again (unlock mode), wrong password retried, default duration offered', seen.length === 2 && seen[0].mode === 'unlock' && /Yanlis/.test(seen[1].message) && seen[0].value === 2 && seen[0].unit === 'saat');
+  check('"make default" was not ticked, so the default stays', JSON.parse(fs.readFileSync(file, 'utf8')).defaultMinutes === 120);
+
+  seen.length = 0;
+  t += 11 * 60000;
+  answers.push({ cancel: true });
+  check('closing the window refuses the tool', await fails(a) && seen.length === 1);
+
+  seen.length = 0;
+  const slow = mk({ prompt: async (o) => { seen.push(o); t += 40000; return { password: 'nope', value: 1, unit: 'saat' }; } });
+  check('wrong passwords until the 30 s window ends refuse the tool', await fails(slow) && seen.length === 1);
+
+  seen.length = 0;
+  let calls = 0;
+  const gate = mk({ prompt: async () => { calls++; await new Promise((r) => setTimeout(r, 50)); return { password: 'abcdef', value: 1, unit: 'gun' }; } });
+  await Promise.all([gate.ensure(), gate.ensure(), gate.ensure()]);
+  check('parallel calls share one window', calls === 1);
+  check('unit maths', toMinutes(30, 'gun') === 43200 && toMinutes(10, 'dakika') === 10 && toMinutes(9999, 'gun') === 525600 && fromMinutes(1440).unit === 'saat' && fromMinutes(1440).value === 24 && fromMinutes(43200).unit === 'gun' && fromMinutes(90).unit === 'dakika');
+  fs.rmSync(file, { force: true });
+}
+
 // password detection against our own Edit controls
 const user32 = koffi.load('user32.dll');
 const CreateWindowExW = user32.func('intptr_t CreateWindowExW(uint32, str16, str16, uint32, int, int, int, int, intptr_t, intptr_t, intptr_t, intptr_t)');

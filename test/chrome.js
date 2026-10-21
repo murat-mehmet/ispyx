@@ -46,12 +46,11 @@ async function readClipboardAfter(client, hwnd, chord) {
   return '';
 }
 
-// chrome.exe is allowed for this test server, plus explorer.exe for the one taskbar click.
 const client = new Client({ name: 'chrome-test', version: '1' });
 await client.connect(new StdioClientTransport({
   command: process.execPath,
   args: [path.join(ROOT, 'src', 'server.js')],
-  env: { ...process.env, WIN_INPUT_ALLOWLIST: 'chrome.exe,explorer.exe', WIN_INPUT_LOG: LOG },
+  env: { ...process.env, WIN_INPUT_AUTH: '0', WIN_INPUT_LOG: LOG },
 }));
 
 let hwnd = 0;

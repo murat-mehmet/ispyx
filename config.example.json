@@ -1,9 +1,4 @@
 {
-  "global": true,
-  "allowlist": [
-    "chrome.exe",
-    "msedge.exe"
-  ],
   "denylist": [
     "keepass.exe",
     "keepassxc.exe",
@@ -15,5 +10,6 @@
   "humanMotion": true,
   "moveMinMs": 300,
   "moveMaxMs": 1000,
-  "overlay": true
+  "overlay": true,
+  "auth": false
 }

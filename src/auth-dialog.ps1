@@ -1,0 +1,115 @@
+# Password prompt for win-input-mcp. Prints one JSON line on stdout and exits.
+#   {"password":"..","confirm":"..","value":24,"unit":"saat","makeDefault":false}   or   {"cancel":true}
+# Control names double as UI Automation ids, so tests can drive the dialog.
+param(
+  [string]$Mode = 'unlock',   # unlock | setup
+  [string]$Message = '',
+  [int]$Seconds = 30,
+  [int]$Value = 24,
+  [string]$Unit = 'saat'
+)
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
+$setup = $Mode -eq 'setup'
+$form = New-Object System.Windows.Forms.Form
+$form.Text = 'win-input-mcp'
+$form.Name = 'authForm'
+$form.StartPosition = 'CenterScreen'
+$form.FormBorderStyle = 'FixedDialog'
+$form.MaximizeBox = $false
+$form.MinimizeBox = $false
+$form.TopMost = $true
+$form.ShowInTaskbar = $true
+$form.ClientSize = New-Object System.Drawing.Size(380, $(if ($setup) { 250 } else { 215 }))
+$font = New-Object System.Drawing.Font('Segoe UI', 9)
+$form.Font = $font
+
+function Add-Label($text, $x, $y, $w = 340, $h = 20, $name = '') {
+  $l = New-Object System.Windows.Forms.Label
+  $l.Text = $text; $l.Location = New-Object System.Drawing.Point($x, $y); $l.Size = New-Object System.Drawing.Size($w, $h)
+  if ($name) { $l.Name = $name }
+  $form.Controls.Add($l); return $l
+}
+
+$y = 12
+$title = if ($setup) { 'Ilk kurulum: bir sifre belirleyin. Araclar bu sifre olmadan calismaz.' } else { 'Bir arac cagrisi geldi. Devam etmek icin sifreyi girin.' }
+$null = Add-Label $title 20 $y 340 34 'title'
+$y += 38
+$msg = Add-Label $Message.Trim() 20 $y 340 18 'message'
+$msg.ForeColor = [System.Drawing.Color]::Firebrick
+$y += 22
+
+$null = Add-Label 'Sifre' 20 $y 80 20
+$pw = New-Object System.Windows.Forms.TextBox
+$pw.Name = 'password'; $pw.UseSystemPasswordChar = $true
+$pw.Location = New-Object System.Drawing.Point(110, ($y - 3)); $pw.Size = New-Object System.Drawing.Size(250, 24)
+$form.Controls.Add($pw)
+$y += 34
+
+$cf = $null
+if ($setup) {
+  $null = Add-Label 'Tekrar' 20 $y 80 20
+  $cf = New-Object System.Windows.Forms.TextBox
+  $cf.Name = 'confirm'; $cf.UseSystemPasswordChar = $true
+  $cf.Location = New-Object System.Drawing.Point(110, ($y - 3)); $cf.Size = New-Object System.Drawing.Size(250, 24)
+  $form.Controls.Add($cf)
+  $y += 34
+}
+
+$null = Add-Label 'Ne kadar acik kalsin' 20 $y 130 20
+$num = New-Object System.Windows.Forms.NumericUpDown
+$num.Name = 'duration'; $num.Minimum = 1; $num.Maximum = 100000; $num.Value = [Math]::Max(1, $Value)
+$num.Location = New-Object System.Drawing.Point(155, ($y - 3)); $num.Size = New-Object System.Drawing.Size(70, 24)
+$form.Controls.Add($num)
+$unitBox = New-Object System.Windows.Forms.ComboBox
+$unitBox.Name = 'unit'; $unitBox.DropDownStyle = 'DropDownList'
+$null = $unitBox.Items.AddRange(@('dakika', 'saat', 'gun'))
+$unitBox.SelectedItem = $Unit; if ($unitBox.SelectedIndex -lt 0) { $unitBox.SelectedItem = 'saat' }
+$unitBox.Location = New-Object System.Drawing.Point(232, ($y - 3)); $unitBox.Size = New-Object System.Drawing.Size(80, 24)
+$form.Controls.Add($unitBox)
+$y += 30
+
+$chk = New-Object System.Windows.Forms.CheckBox
+$chk.Name = 'makeDefault'; $chk.Text = 'Bu sureyi yeni varsayilan yap'
+$chk.Location = New-Object System.Drawing.Point(20, $y); $chk.Size = New-Object System.Drawing.Size(340, 22)
+$form.Controls.Add($chk)
+$y += 30
+
+$left = $Seconds
+$count = Add-Label '' 20 ($y + 4) 170 20 'countdown'
+$count.ForeColor = [System.Drawing.Color]::DimGray
+$ok = New-Object System.Windows.Forms.Button
+$ok.Name = 'ok'; $ok.Text = 'Tamam'; $ok.Location = New-Object System.Drawing.Point(200, $y); $ok.Size = New-Object System.Drawing.Size(75, 26)
+$ok.DialogResult = 'OK'; $form.AcceptButton = $ok; $form.Controls.Add($ok)
+$cancel = New-Object System.Windows.Forms.Button
+$cancel.Name = 'cancel'; $cancel.Text = 'Iptal'; $cancel.Location = New-Object System.Drawing.Point(285, $y); $cancel.Size = New-Object System.Drawing.Size(75, 26)
+$cancel.DialogResult = 'Cancel'; $form.CancelButton = $cancel; $form.Controls.Add($cancel)
+
+$timer = New-Object System.Windows.Forms.Timer
+$timer.Interval = 1000
+$timer.Add_Tick({
+  $script:left--
+  $count.Text = "$($script:left) sn icinde kapanir"
+  if ($script:left -le 0) { $form.DialogResult = 'Cancel'; $form.Close() }
+})
+$count.Text = "$left sn icinde kapanir"
+$timer.Start()
+$form.Add_Shown({ $form.Activate(); $pw.Focus() })
+
+$res = $form.ShowDialog()
+$timer.Stop()
+if ($res -eq 'OK') {
+  $num.ValidateEditText() # commit text typed into the number box
+  $out = [ordered]@{
+    password = $pw.Text
+    confirm = $(if ($cf) { $cf.Text } else { '' })
+    value = [int]$num.Value
+    unit = [string]$unitBox.SelectedItem
+    makeDefault = [bool]$chk.Checked
+  }
+} else {
+  $out = [ordered]@{ cancel = $true }
+}
+[Console]::Out.WriteLine(($out | ConvertTo-Json -Compress))

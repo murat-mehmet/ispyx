@@ -13,7 +13,8 @@
     "chrome-test": "node test/chrome.js",
     "instagram-test": "node test/instagram.js",
     "motion-test": "node test/motion.js",
-    "stop-test": "node test/stop.js"
+    "stop-test": "node test/stop.js",
+    "auth-test": "node test/auth.js"
   },
   "license": "UNLICENSED",
   "private": true,

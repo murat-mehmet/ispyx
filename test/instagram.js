@@ -66,13 +66,12 @@ const client = new Client({ name: 'instagram-test', version: '1' });
 await client.connect(new StdioClientTransport({
   command: process.execPath,
   args: [path.join(ROOT, 'src', 'server.js')],
-  env: { ...process.env, WIN_INPUT_GLOBAL: '1', WIN_INPUT_ALLOWLIST: '', WIN_INPUT_LOG: LOG },
+  env: { ...process.env, WIN_INPUT_AUTH: '0', WIN_INPUT_LOG: LOG },
 }));
 
 let hwnd = 0;
 try {
   const first = (await call(client, 'list_windows')).data;
-  check('global mode is on', first.global === true);
   check('list_windows includes the taskbar', first.windows.some((x) => x.className === 'Shell_TrayWnd'));
   const before = new Set(first.windows.map((x) => x.hwnd));
 
