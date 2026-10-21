@@ -91,6 +91,24 @@ Typical flow: `list_windows` → `screenshot_window` → read coordinates off th
 ```
 npm test        # unit checks (PNG, key parsing, password-field detection)
 npm run smoke   # drives the real server over stdio against a fresh Notepad tab
+npm run chrome-test   # Chrome end-to-end: Google search through the server (see below)
 ```
 
 The smoke test opens Notepad, opens a **new tab** (Notepad restores your earlier tabs, which must stay untouched), types `Merhaba ğüşıöç`, `ctrl+a`, checks the text by copying it back, takes a screenshot, verifies that `move` lands on the mapped screen pixel, drags across the text and checks the selection is a prefix of it, checks that a non-allowlisted window is refused, empties and closes the tab and the window, then checks the kill switch with a second server instance. Notepad is added to the allowlist for the test only. Screenshots are written to `test/out/`.
+
+### Chrome end-to-end test (`npm run chrome-test`)
+
+Opens Chrome the way a person does: it middle-clicks the pinned Chrome button on the taskbar (found read-only through UI Automation by `test/taskbar-button.ps1`, clicked through the server's `click` on the taskbar window). A middle-click starts a **new window** and does not focus or minimise the windows you already have open. The test then targets only that new window (the hwnd that was not there before), types `https://www.google.com/?hl=en` in the address bar, types `Merhaba dunya hava durumu Istanbul` into the search box, presses Enter, and checks:
+
+- window title contains the query, and the URL (read with `ctrl+l`, `ctrl+c`) is `google.*/search?q=...hava+durumu...`
+- a screenshot of the results window is returned (`test/out/chrome-results.png`)
+- the page text, copied with `ctrl+a`, `ctrl+c` and read back from the clipboard (no OCR), is non-empty and contains the query terms (`test/out/chrome-results.txt`); result titles are guessed from the lines that sit just above a URL/breadcrumb line and printed
+
+At the end only that window is closed (`WM_CLOSE`). The test server allows `chrome.exe` and `explorer.exe` (for the taskbar click) for this run only.
+
+Limits found:
+
+- The new window uses your normal Chrome profile (a taskbar launch cannot choose another), so the search lands in your history and your cookies decide whether a Google consent screen shows. The test fails with a clear message if it detects one (`Before you continue` / `Reject all` / Turkish equivalents) instead of clicking blindly.
+- Language: the URL pins `hl=en`, so labels are English; result text can still be Turkish.
+- Result titles are heuristic: Google's layout changes, and AI Overview / site-name lines may be picked up instead of page titles. The title/URL/text checks are the real assertions.
+- Needs the taskbar Chrome button to be pinned or running, an unlocked screen, and Chrome not elevated.

@@ -44,6 +44,7 @@ const f = {
   GetWindowTextW: user32.func('int GetWindowTextW(intptr_t h, _Out_ uint16_t *buf, int n)'),
   GetClassNameW: user32.func('int GetClassNameW(intptr_t h, _Out_ uint16_t *buf, int n)'),
   GetWindowRect: user32.func('bool GetWindowRect(intptr_t h, _Out_ RECT *r)'),
+  FindWindowW: user32.func('intptr_t FindWindowW(str16 cls, str16 title)'),
   GetWindowThreadProcessId: user32.func('uint32 GetWindowThreadProcessId(intptr_t h, _Out_ uint32_t *pid)'),
   GetKeyboardLayout: user32.func('intptr_t GetKeyboardLayout(uint32 tid)'),
   GetWindowLongPtrW: user32.func('intptr_t GetWindowLongPtrW(intptr_t h, int idx)'),

@@ -9,7 +9,8 @@
   "scripts": {
     "start": "node src/server.js",
     "test": "node test/unit.js",
-    "smoke": "node test/smoke.js"
+    "smoke": "node test/smoke.js",
+    "chrome-test": "node test/chrome.js"
   },
   "license": "UNLICENSED",
   "private": true,
