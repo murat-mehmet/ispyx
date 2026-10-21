@@ -7,6 +7,8 @@ const gdi32 = koffi.load('gdi32.dll');
 const advapi32 = koffi.load('advapi32.dll');
 const dwmapi = koffi.load('dwmapi.dll');
 const ole32 = koffi.load('ole32.dll');
+const winmm = koffi.load('winmm.dll');
+const timeBeginPeriod = winmm.func('uint32 timeBeginPeriod(uint32 ms)');
 
 export const RECT = koffi.struct('RECT', { left: 'int32', top: 'int32', right: 'int32', bottom: 'int32' });
 export const POINT = koffi.struct('POINT', { x: 'int32', y: 'int32' });
@@ -126,6 +128,7 @@ export function init() {
   if (!f.SetProcessDpiAwarenessContext(-4)) {
     throw new Error('Could not switch the process to per-monitor DPI awareness (v2); coordinates would be wrong.');
   }
+  timeBeginPeriod(1); // 1 ms timer ticks, so pointer glides update ~100+ times a second instead of ~64
   f.CoInitializeEx(0, 2); // apartment threaded, needed for UI Automation
 }
 

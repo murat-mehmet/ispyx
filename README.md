@@ -56,6 +56,14 @@ Settings, later wins:
 
 Other keys: `killCornerPx` (default 2), `maxTypeLength` (default 10000).
 
+## Human-like pointer motion
+
+By default the pointer **glides** to every target (`click`, `move`, `mouse_down`/`mouse_up`, `scroll`, and the travel part of `drag`): a gently curved path (cubic Bezier, random bend side and size) with a smooth minimum-jerk speed profile (slow start, fast middle, soft landing), taking a **random 300-1000 ms**, updated about every 8 ms. It always lands exactly on the target. The path is kept off the desktop edge and out of the kill-switch corner, and the kill switch is checked while moving.
+
+- Per call: `instant: true` jumps; `durationMs` fixes the travel time.
+- Config: `humanMotion` (default true), `moveMinMs` (300), `moveMaxMs` (1000); env `WIN_INPUT_HUMAN_MOTION=0` turns it off.
+- Moves under 4 px are instant. `npm run motion-test` checks duration, curvature, smoothness and exact arrival.
+
 ## Action log
 
 Every action, refusal and error is appended as one JSON line, with a timestamp, to `G:\win-input-mcp\logs\actions.jsonl` (override with `logPath` or `WIN_INPUT_LOG`). Fields: `time`, `tool`, `window` (hwnd, title, process; in global mode the window under the pointer), `coords` (as given and in screen pixels), `args` (including typed text), `ok`, `error`. Text aimed at a password field is never logged (only the character count of the refused text). `get_clipboard` logs the length only. Kill-switch trips are logged.
@@ -117,6 +125,7 @@ Typical flow: `screenshot_screen` → read coordinates off the image → `click`
 npm test        # unit checks (PNG, key parsing, password-field detection)
 npm run smoke   # drives the real server over stdio against a fresh Notepad tab
 npm run chrome-test   # Chrome end-to-end: Google search through the server (see below)
+npm run motion-test   # pointer glides along a curve in 300-1000 ms, lands exactly
 npm run instagram-test # global mode: new Chrome window, scroll checks, Instagram login page (look only)
 ```
 

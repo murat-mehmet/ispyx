@@ -9,6 +9,7 @@ import * as w from './win32.js';
 import { Guard, ToolError, loadConfig, winSummary } from './guard.js';
 import { shrinkToPng } from './image.js';
 import { parseSequence, insertsContent } from './keys.js';
+import { curvedPath, ease, randomDuration } from './motion.js';
 
 if (process.platform !== 'win32') {
   process.stderr.write('win-input-mcp only runs on Windows.\n');
@@ -34,6 +35,10 @@ const xy = {
 };
 const buttons = z.enum(['left', 'right', 'middle']).default('left');
 const modifiers = z.array(z.enum(['ctrl', 'shift', 'alt', 'win'])).optional().describe('Keys held down during the action, e.g. ["ctrl"] for ctrl+click.');
+const motion = {
+  instant: z.boolean().optional().describe('Jump straight to the target instead of gliding like a hand.'),
+  durationMs: z.number().int().min(0).max(5000).optional().describe('Glide time; default random 300-1000 ms.'),
+};
 const MOD_VK = { ctrl: 0x11, shift: 0x10, alt: 0x12, win: 0x5b };
 
 const text = (s) => ({ content: [{ type: 'text', text: s }] });
@@ -99,6 +104,39 @@ async function pointMapper(args, entry) {
     if (under) entry.window = winSummary(under);
     return p;
   };
+}
+
+const humanMotion = (args) => config.humanMotion && !args.instant;
+
+/**
+ * Move the pointer to p like a hand would: a curved path with a smooth speed profile, taking a random
+ * 300-1000 ms (config moveMinMs/moveMaxMs, or durationMs). `instant: true` or humanMotion:false jumps.
+ */
+async function glide(p, args = {}) {
+  const from = w.cursorPos();
+  const dist = Math.hypot(p.sx - from.x, p.sy - from.y);
+  if (!humanMotion(args) || dist < 4) {
+    w.mouseMoveTo(p.sx, p.sy);
+    return;
+  }
+  const ms = args.durationMs ?? randomDuration(config.moveMinMs, config.moveMaxMs);
+  const path = curvedPath(from, { x: p.sx, y: p.sy });
+  const v = w.virtualScreen();
+  const keep = config.killCornerPx + 2;
+  const t0 = performance.now();
+  for (let n = 0; ; n++) {
+    const t = Math.min(1, (performance.now() - t0) / ms);
+    const q = path(ease(t));
+    // a bend must never drag the pointer off the desktop or into the kill-switch corner
+    const x = Math.min(v.x + v.width - 1, Math.max(v.x, Math.round(q.x)));
+    const y = Math.min(v.y + v.height - 1, Math.max(v.y, Math.round(q.y)));
+    const hit = guard.inCorner(x, y);
+    w.mouseMoveTo(hit ? keep : x, hit ? keep : y);
+    if (t >= 1) break;
+    if (n % 4 === 0) guard.checkKill();
+    await w.sleep(8);
+  }
+  w.mouseMoveTo(p.sx, p.sy);
 }
 
 /** Hold modifier keys for the duration of fn. */
@@ -206,14 +244,14 @@ server.registerTool('screenshot_screen', {
 
 server.registerTool('click', {
   description: 'Click at a point: left/right/middle button, double or triple (clicks), optional held modifiers (ctrl/shift/alt/win). In window space the window is focused first.',
-  inputSchema: { ...target, space, ...xy, button: buttons, double: z.boolean().default(false), clicks: z.number().int().min(1).max(3).optional(), modifiers },
+  inputSchema: { ...motion, ...target, space, ...xy, button: buttons, double: z.boolean().default(false), clicks: z.number().int().min(1).max(3).optional(), modifiers },
 }, action('click', async (args, entry) => {
   const map = await pointMapper(args, entry);
   const p = map(args.x, args.y);
   entry.coords = { x: args.x, y: args.y, screen: { x: p.sx, y: p.sy } };
   const b = args.button ?? 'left';
   const n = args.clicks ?? (args.double ? 2 : 1);
-  w.mouseMoveTo(p.sx, p.sy);
+  await glide(p, args);
   await w.sleep(30);
   guard.checkKill();
   await withModifiers(args.modifiers, async () => {
@@ -228,24 +266,24 @@ server.registerTool('click', {
 
 server.registerTool('move', {
   description: 'Move the mouse pointer.',
-  inputSchema: { ...target, space, ...xy },
+  inputSchema: { ...motion, ...target, space, ...xy },
 }, action('move', async (args, entry) => {
   const map = await pointMapper(args, entry);
   const p = map(args.x, args.y);
   entry.coords = { x: args.x, y: args.y, screen: { x: p.sx, y: p.sy } };
-  w.mouseMoveTo(p.sx, p.sy);
+  await glide(p, args);
   return json({ ok: true, screen: { x: p.sx, y: p.sy } });
 }));
 
 server.registerTool('mouse_down', {
   description: 'Press and keep holding a mouse button (optionally after moving to x, y). Release with mouse_up. Held buttons are released automatically on the kill switch or shutdown.',
-  inputSchema: { ...target, space, x: z.number().optional(), y: z.number().optional(), button: buttons },
+  inputSchema: { ...motion, ...target, space, x: z.number().optional(), y: z.number().optional(), button: buttons },
 }, action('mouse_down', async (args, entry) => {
   const map = await pointMapper(args, entry);
   if (args.x !== undefined && args.y !== undefined) {
     const p = map(args.x, args.y);
     entry.coords = { x: args.x, y: args.y, screen: { x: p.sx, y: p.sy } };
-    w.mouseMoveTo(p.sx, p.sy);
+    await glide(p, args);
     await w.sleep(30);
   }
   const b = args.button ?? 'left';
@@ -256,13 +294,13 @@ server.registerTool('mouse_down', {
 
 server.registerTool('mouse_up', {
   description: 'Release a mouse button held with mouse_down (optionally after moving to x, y).',
-  inputSchema: { ...target, space, x: z.number().optional(), y: z.number().optional(), button: buttons },
+  inputSchema: { ...motion, ...target, space, x: z.number().optional(), y: z.number().optional(), button: buttons },
 }, action('mouse_up', async (args, entry) => {
   const map = await pointMapper(args, entry);
   if (args.x !== undefined && args.y !== undefined) {
     const p = map(args.x, args.y);
     entry.coords = { x: args.x, y: args.y, screen: { x: p.sx, y: p.sy } };
-    w.mouseMoveTo(p.sx, p.sy);
+    await glide(p, args);
     await w.sleep(30);
   }
   const b = args.button ?? 'left';
@@ -273,7 +311,7 @@ server.registerTool('mouse_up', {
 
 server.registerTool('drag', {
   description: 'Press the button at the start point, move to the end point in steps (needed for HTML5 drag-and-drop), release. Optional held modifiers.',
-  inputSchema: {
+  inputSchema: { ...motion,
     ...target, space,
     fromX: z.number(), fromY: z.number(), toX: z.number(), toY: z.number(),
     steps: z.number().int().min(1).max(500).default(20),
@@ -290,16 +328,20 @@ server.registerTool('drag', {
   const delay = args.delayMs ?? 10;
   const b = args.button ?? 'left';
   await withModifiers(args.modifiers, async () => {
-    w.mouseMoveTo(a.sx, a.sy);
+    await glide(a, args);
     await w.sleep(40);
     w.mouseDown(b);
     guard.heldButtons.add(b);
     try {
       await w.sleep(40);
-      for (let i = 1; i <= steps; i++) {
-        guard.checkKill();
-        w.mouseMoveTo(Math.round(a.sx + ((z2.sx - a.sx) * i) / steps), Math.round(a.sy + ((z2.sy - a.sy) * i) / steps));
-        if (delay) await w.sleep(delay);
+      if (humanMotion(args)) {
+        await glide(z2, args);
+      } else {
+        for (let i = 1; i <= steps; i++) {
+          guard.checkKill();
+          w.mouseMoveTo(Math.round(a.sx + ((z2.sx - a.sx) * i) / steps), Math.round(a.sy + ((z2.sy - a.sy) * i) / steps));
+          if (delay) await w.sleep(delay);
+        }
       }
       await w.sleep(40);
     } finally {
@@ -312,7 +354,7 @@ server.registerTool('drag', {
 
 server.registerTool('scroll', {
   description: 'Mouse wheel at a point. `amount`: vertical notches, positive up, negative down. `horizontal`: horizontal notches, positive right, negative left. Either or both.',
-  inputSchema: {
+  inputSchema: { ...motion,
     ...target, space, ...xy,
     amount: z.number().min(-100).max(100).optional(),
     horizontal: z.number().min(-100).max(100).optional(),
@@ -323,7 +365,7 @@ server.registerTool('scroll', {
   const map = await pointMapper(args, entry);
   const p = map(args.x, args.y);
   entry.coords = { x: args.x, y: args.y, screen: { x: p.sx, y: p.sy }, amount: args.amount, horizontal: args.horizontal };
-  w.mouseMoveTo(p.sx, p.sy);
+  await glide(p, args);
   await w.sleep(30);
   guard.checkKill();
   await withModifiers(args.modifiers, async () => {

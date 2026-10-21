@@ -16,6 +16,9 @@ const DEFAULTS = {
   denylist: ['keepass.exe', 'keepassxc.exe', '1password.exe', 'bitwarden.exe'],
   logPath: path.join(ROOT, 'logs', 'actions.jsonl'),
   killCornerPx: 2,
+  humanMotion: true, // pointer glides along a curve instead of jumping
+  moveMinMs: 300,
+  moveMaxMs: 1000,
   maxTypeLength: 10000,
 };
 
@@ -36,6 +39,7 @@ export function loadConfig(env = process.env) {
   if (env.WIN_INPUT_DENYLIST) cfg.denylist = env.WIN_INPUT_DENYLIST.split(',');
   if (env.WIN_INPUT_GLOBAL) cfg.global = !/^(0|false|no)$/i.test(env.WIN_INPUT_GLOBAL);
   cfg.global = !!cfg.global;
+  if (env.WIN_INPUT_HUMAN_MOTION) cfg.humanMotion = !/^(0|false|no)$/i.test(env.WIN_INPUT_HUMAN_MOTION);
   cfg.denylist = cfg.denylist.map((s) => String(s).trim().toLowerCase()).filter(Boolean);
   if (env.WIN_INPUT_LOG) cfg.logPath = env.WIN_INPUT_LOG;
   cfg.allowlist = cfg.allowlist.map((s) => String(s).trim().toLowerCase()).filter(Boolean);

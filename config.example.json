@@ -1,8 +1,19 @@
 {
   "global": true,
-  "allowlist": ["chrome.exe", "msedge.exe"],
-  "denylist": ["keepass.exe", "keepassxc.exe", "1password.exe", "bitwarden.exe"],
+  "allowlist": [
+    "chrome.exe",
+    "msedge.exe"
+  ],
+  "denylist": [
+    "keepass.exe",
+    "keepassxc.exe",
+    "1password.exe",
+    "bitwarden.exe"
+  ],
   "logPath": "logs/actions.jsonl",
   "killCornerPx": 2,
-  "maxTypeLength": 10000
+  "maxTypeLength": 10000,
+  "humanMotion": true,
+  "moveMinMs": 300,
+  "moveMaxMs": 1000
 }
