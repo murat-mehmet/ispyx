@@ -167,7 +167,7 @@ try {
   w._raw.SetCursorPos(0, 0);
   await sleep(150);
   const r = await call(c2, 'list_windows');
-  check('kill switch refuses after pointer in top-left corner', r.isError && /Kill switch/.test(r.data), r.data);
+  check('kill switch refuses after pointer in top-left corner', r.isError && /STOPPED BY THE USER/.test(r.data), r.data);
   w._raw.SetCursorPos(400, 400);
   const r2 = await call(c2, 'list_windows');
   check('kill switch stays latched until restart', r2.isError);

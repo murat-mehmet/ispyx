@@ -15,5 +15,6 @@
   "maxTypeLength": 10000,
   "humanMotion": true,
   "moveMinMs": 300,
-  "moveMaxMs": 1000
+  "moveMaxMs": 1000,
+  "overlay": true
 }

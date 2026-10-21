@@ -64,6 +64,12 @@ By default the pointer **glides** to every target (`click`, `move`, `mouse_down`
 - Config: `humanMotion` (default true), `moveMinMs` (300), `moveMaxMs` (1000); env `WIN_INPUT_HUMAN_MOTION=0` turns it off.
 - Moves under 4 px are instant. `npm run motion-test` checks duration, curvature, smoothness and exact arrival.
 
+## Running banner and emergency stop
+
+- **Banner:** while a tool runs, a small dark banner (`win-input-mcp çalışıyor: <tool>   |   Durdurmak için Alt+Esc`) shows at the top centre of the primary monitor and hides 1.5 s after the last tool call. It is click-through (WS_EX_TRANSPARENT, `WM_NCHITTEST` returns transparent, never takes focus), so it catches no click and does not count as a window under the pointer. It stays visible in screen recordings, but is hidden for a moment while the agent takes a screenshot so it never covers what the agent needs to see. Turn it off with config `overlay: false` or `WIN_INPUT_OVERLAY=0`.
+- **Alt+Esc** (pressed by you) stops everything at once: the running tool returns an error saying `STOPPED BY THE USER ... Stop all work now and do not retry`, held keys and buttons are released, the banner turns red, and every later call fails with the same message until the server is restarted. Alt+Esc is caught by a low-level keyboard hook that swallows the Esc, so Windows does not also cycle windows (an Alt tap may still focus the menu bar of the active window). Keys injected by this server never trigger it; a polling fallback covers moments when the hook is not serviced. The top-left corner kill switch stops the same way.
+- Why not Ctrl+Esc: Windows opens the Start menu on it before an app can react.
+
 ## Action log
 
 Every action, refusal and error is appended as one JSON line, with a timestamp, to `G:\win-input-mcp\logs\actions.jsonl` (override with `logPath` or `WIN_INPUT_LOG`). Fields: `time`, `tool`, `window` (hwnd, title, process; in global mode the window under the pointer), `coords` (as given and in screen pixels), `args` (including typed text), `ok`, `error`. Text aimed at a password field is never logged (only the character count of the refused text). `get_clipboard` logs the length only. Kill-switch trips are logged.
@@ -125,6 +131,7 @@ Typical flow: `screenshot_screen` → read coordinates off the image → `click`
 npm test        # unit checks (PNG, key parsing, password-field detection)
 npm run smoke   # drives the real server over stdio against a fresh Notepad tab
 npm run chrome-test   # Chrome end-to-end: Google search through the server (see below)
+npm run stop-test     # banner shows, is click-through; Alt+Esc aborts a running tool and blocks later calls
 npm run motion-test   # pointer glides along a curve in 300-1000 ms, lands exactly
 npm run instagram-test # global mode: new Chrome window, scroll checks, Instagram login page (look only)
 ```

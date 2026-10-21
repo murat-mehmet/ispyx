@@ -12,7 +12,8 @@
     "smoke": "node test/smoke.js",
     "chrome-test": "node test/chrome.js",
     "instagram-test": "node test/instagram.js",
-    "motion-test": "node test/motion.js"
+    "motion-test": "node test/motion.js",
+    "stop-test": "node test/stop.js"
   },
   "license": "UNLICENSED",
   "private": true,

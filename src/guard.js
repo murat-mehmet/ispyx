@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as w from './win32.js';
+import { altEscDown } from './hotkey.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -16,6 +17,7 @@ const DEFAULTS = {
   denylist: ['keepass.exe', 'keepassxc.exe', '1password.exe', 'bitwarden.exe'],
   logPath: path.join(ROOT, 'logs', 'actions.jsonl'),
   killCornerPx: 2,
+  overlay: true, // banner on screen while a tool runs
   humanMotion: true, // pointer glides along a curve instead of jumping
   moveMinMs: 300,
   moveMaxMs: 1000,
@@ -39,6 +41,7 @@ export function loadConfig(env = process.env) {
   if (env.WIN_INPUT_DENYLIST) cfg.denylist = env.WIN_INPUT_DENYLIST.split(',');
   if (env.WIN_INPUT_GLOBAL) cfg.global = !/^(0|false|no)$/i.test(env.WIN_INPUT_GLOBAL);
   cfg.global = !!cfg.global;
+  if (env.WIN_INPUT_OVERLAY) cfg.overlay = !/^(0|false|no)$/i.test(env.WIN_INPUT_OVERLAY);
   if (env.WIN_INPUT_HUMAN_MOTION) cfg.humanMotion = !/^(0|false|no)$/i.test(env.WIN_INPUT_HUMAN_MOTION);
   cfg.denylist = cfg.denylist.map((s) => String(s).trim().toLowerCase()).filter(Boolean);
   if (env.WIN_INPUT_LOG) cfg.logPath = env.WIN_INPUT_LOG;
@@ -51,6 +54,8 @@ export class Guard {
   constructor(config) {
     this.config = config;
     this.killed = false;
+    this.killReason = '';
+    this.overlay = null;
     this.lastWindow = 0;
     this.shots = new Map(); // hwnd -> scale of the last screenshot
     this.lastShot = null; // { rect, scale } of the last global screenshot
@@ -63,7 +68,7 @@ export class Guard {
   startWatching() {
     const t = setInterval(() => {
       try { this.checkKill(); } catch { /* latched */ }
-    }, 40);
+    }, 15);
     t.unref();
   }
 
@@ -72,17 +77,26 @@ export class Guard {
     return x <= n && y <= n;
   }
 
+  /** Latch the kill switch: everything stops, held keys/buttons are released, later calls fail. */
+  trigger(reason) {
+    if (this.killed) return;
+    this.killed = true;
+    this.killReason = reason;
+    this.log({ tool: 'kill_switch', note: reason });
+    this.releaseAll();
+    this.overlay?.stop(reason);
+  }
+
   checkKill() {
     if (!this.killed) {
       const p = w.cursorPos();
-      if (this.inCorner(p.x, p.y)) {
-        this.killed = true;
-        this.log({ tool: 'kill_switch', note: 'pointer entered the top-left corner' });
-        this.releaseAll();
-      }
+      if (this.inCorner(p.x, p.y)) this.trigger('mouse in top-left corner');
+      else if (!this.heldKeys.has(0x1b) && altEscDown()) this.trigger('Alt+Esc');
     }
     if (this.killed) {
-      throw new ToolError('Kill switch active: the mouse was moved into the top-left screen corner. All actions are refused until the server is restarted.');
+      throw new ToolError(this.killReason === 'Alt+Esc'
+        ? 'STOPPED BY THE USER (Alt+Esc). Stop all work now and do not retry; tell the user you were stopped. Every action is refused until the server is restarted.'
+        : 'STOPPED BY THE USER (mouse moved into the top-left screen corner). Stop all work now and do not retry; tell the user you were stopped. Every action is refused until the server is restarted.');
     }
   }
 

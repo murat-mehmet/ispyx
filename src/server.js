@@ -10,6 +10,8 @@ import { Guard, ToolError, loadConfig, winSummary } from './guard.js';
 import { shrinkToPng } from './image.js';
 import { parseSequence, insertsContent } from './keys.js';
 import { curvedPath, ease, randomDuration } from './motion.js';
+import { Overlay } from './overlay.js';
+import { installStopHotkey } from './hotkey.js';
 
 if (process.platform !== 'win32') {
   process.stderr.write('win-input-mcp only runs on Windows.\n');
@@ -19,7 +21,10 @@ if (process.platform !== 'win32') {
 w.init();
 const config = loadConfig();
 const guard = new Guard(config);
+const overlay = new Overlay({ enabled: config.overlay });
+guard.overlay = overlay;
 guard.startWatching();
+installStopHotkey((reason) => guard.trigger(reason));
 
 const target = {
   hwnd: z.number().int().optional().describe('Window handle from list_windows. Window-relative mode and focusing use it.'),
@@ -50,10 +55,13 @@ const server = new McpServer({ name: 'win-input-mcp', version: '2.0.0' });
 function action(name, handler, { session = true } = {}) {
   return async (args) => {
     const entry = { tool: name, args: redact(name, args) };
+    const shown = !QUIET.has(name);
     try {
       guard.checkKill();
       if (session) guard.checkSession();
+      if (shown) overlay.begin(name);
       const res = await handler(args, entry);
+      guard.checkKill(); // stopped while the tool was finishing: report it, do not claim success
       entry.ok = true;
       guard.log(entry);
       return res;
@@ -63,9 +71,12 @@ function action(name, handler, { session = true } = {}) {
       guard.log(entry);
       const msg = e instanceof ToolError ? e.message : `Unexpected error: ${e.message}`;
       return { isError: true, content: [{ type: 'text', text: msg }] };
+    } finally {
+      if (shown && overlay.active) overlay.done();
     }
   };
 }
+const QUIET = new Set(['list_windows', 'list_monitors', 'cursor_position', 'get_clipboard']);
 
 // The log keeps the typed text, except where it could be a secret.
 function redact(name, args) {
@@ -193,7 +204,7 @@ server.registerTool('screenshot_window', {
   guard.assertUsable(win, { needVisible: false });
   entry.window = winSummary(win);
   if (win.minimized) throw new ToolError(`"${win.title}" is minimized and cannot be captured. Use focus_window first.`);
-  const cap = w.captureWindow(win.hwnd);
+  const cap = await overlay.hiddenDuring(() => w.captureWindow(win.hwnd));
   const img = shrinkToPng(cap, args.maxWidth ?? 1280);
   guard.shots.set(win.hwnd, img.scale);
   guard.lastWindow = win.hwnd;
@@ -231,7 +242,7 @@ server.registerTool('screenshot_screen', {
     rect = { left: m.left, top: m.top, width: m.width, height: m.height };
   }
   entry.rect = rect;
-  const cap = w.captureScreenRect(rect);
+  const cap = await overlay.hiddenDuring(() => w.captureScreenRect(rect));
   const img = shrinkToPng(cap, args.maxWidth ?? 1280);
   guard.lastShot = { rect, scale: img.scale };
   return {
@@ -414,7 +425,7 @@ server.registerTool('type_text', {
     throw e;
   }
   guard.checkKill();
-  await w.typeUnicode(args.text);
+  await w.typeUnicode(args.text, () => guard.checkKill());
   return json({ ok: true, typed: args.text.length, keyboardLayout: '0x' + w.foregroundLayout().toString(16) });
 }));
 
