@@ -1,0 +1,6 @@
+{
+  "allowlist": ["chrome.exe", "msedge.exe"],
+  "logPath": "logs/actions.jsonl",
+  "killCornerPx": 2,
+  "maxTypeLength": 10000
+}

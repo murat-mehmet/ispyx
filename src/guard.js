@@ -1,0 +1,157 @@
+// Safety layer: config, process allowlist, kill switch, action log.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import * as w from './win32.js';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+export class ToolError extends Error {}
+
+const DEFAULTS = {
+  allowlist: ['chrome.exe', 'msedge.exe'],
+  logPath: path.join(ROOT, 'logs', 'actions.jsonl'),
+  killCornerPx: 2,
+  maxTypeLength: 10000,
+};
+
+export function loadConfig(env = process.env) {
+  let cfg = { ...DEFAULTS };
+  const file = env.WIN_INPUT_MCP_CONFIG || path.join(ROOT, 'config.json');
+  if (fs.existsSync(file)) {
+    try {
+      cfg = { ...cfg, ...JSON.parse(fs.readFileSync(file, 'utf8')) };
+    } catch (e) {
+      throw new Error(`Config file ${file} is not valid JSON: ${e.message}`);
+    }
+  }
+  if (env.WIN_INPUT_ALLOWLIST) cfg.allowlist = env.WIN_INPUT_ALLOWLIST.split(',');
+  if (env.WIN_INPUT_LOG) cfg.logPath = env.WIN_INPUT_LOG;
+  cfg.allowlist = cfg.allowlist.map((s) => String(s).trim().toLowerCase()).filter(Boolean);
+  cfg.logPath = path.resolve(ROOT, cfg.logPath);
+  return cfg;
+}
+
+export class Guard {
+  constructor(config) {
+    this.config = config;
+    this.killed = false;
+    this.lastWindow = 0;
+    this.shots = new Map(); // hwnd -> scale of the last screenshot
+    fs.mkdirSync(path.dirname(config.logPath), { recursive: true });
+  }
+
+  /** Watch the pointer so a quick flick into the corner between two actions is not missed. */
+  startWatching() {
+    const t = setInterval(() => {
+      try { this.checkKill(); } catch { /* latched */ }
+    }, 40);
+    t.unref();
+  }
+
+  inCorner(x, y) {
+    const n = this.config.killCornerPx;
+    return x <= n && y <= n;
+  }
+
+  checkKill() {
+    if (!this.killed) {
+      const p = w.cursorPos();
+      if (this.inCorner(p.x, p.y)) this.killed = true;
+    }
+    if (this.killed) {
+      throw new ToolError('Kill switch active: the mouse was moved into the top-left screen corner. All actions are refused until the server is restarted.');
+    }
+  }
+
+  checkSession() {
+    if (w.isScreenLocked()) throw new ToolError('The screen is locked (or a secure prompt is showing), so no input can be sent or captured. Unlock it and try again.');
+  }
+
+  allowed(win) {
+    return !!win.process && this.config.allowlist.includes(win.process);
+  }
+
+  /** Throws a plain error unless the window may be acted on. */
+  assertUsable(win, { needVisible = true } = {}) {
+    if (!win.process) {
+      throw new ToolError(`Cannot identify the program that owns "${win.title}"; it may be elevated. Refused.`);
+    }
+    if (!this.allowed(win)) {
+      throw new ToolError(`Refused: "${win.title}" belongs to ${win.process}, which is not on the allowlist (${this.config.allowlist.join(', ')}).`);
+    }
+    if (win.elevated && !w.selfIsElevated()) {
+      throw new ToolError(`"${win.title}" is running as administrator, and Windows blocks input from a normal program to an elevated window. Run it without elevation, or start this server elevated.`);
+    }
+    if (needVisible && win.minimized) {
+      throw new ToolError(`"${win.title}" is minimized. Use focus_window first.`);
+    }
+  }
+
+  /** Resolve {hwnd,title} (or the last used window) to a described window. */
+  resolve({ hwnd, title } = {}) {
+    if (hwnd) {
+      if (!w.windowExists(hwnd)) throw new ToolError(`Window ${hwnd} no longer exists.`);
+      return w.describeWindow(hwnd);
+    }
+    if (title) {
+      const q = title.toLowerCase();
+      const hits = w.listWindows().filter((x) => x.title.toLowerCase().includes(q));
+      if (!hits.length) throw new ToolError(`No visible window title contains "${title}". Call list_windows to see what is open.`);
+      return hits.find((x) => this.allowed(x)) || hits[0];
+    }
+    if (this.lastWindow && w.windowExists(this.lastWindow)) return w.describeWindow(this.lastWindow);
+    const fg = w.foregroundWindow();
+    if (fg) return w.describeWindow(fg);
+    throw new ToolError('No window given. Pass hwnd or title, or use list_windows first.');
+  }
+
+  /** Window-relative screenshot pixels -> absolute screen pixels, with safety checks. */
+  toScreen(win, x, y, { scale } = {}) {
+    const rect = w.getRect(win.hwnd);
+    if (!rect) throw new ToolError(`Cannot read the position of "${win.title}".`);
+    const s = scale || this.shots.get(win.hwnd) || 1;
+    const sx = Math.round(rect.left + x / s);
+    const sy = Math.round(rect.top + y / s);
+    if (sx < rect.left || sy < rect.top || sx >= rect.left + rect.width || sy >= rect.top + rect.height) {
+      throw new ToolError(`Point (${x}, ${y}) is outside "${win.title}" (screenshot size ${Math.round(rect.width * s)}x${Math.round(rect.height * s)}).`);
+    }
+    if (this.inCorner(sx, sy)) throw new ToolError('That point is inside the top-left kill-switch corner; refused.');
+    return { sx, sy, rect, scale: s };
+  }
+
+  /** The point must really belong to the target window, not to something covering it. */
+  assertPointOwned(win, sx, sy) {
+    const top = w.rootWindowAt(sx, sy);
+    if (top !== win.hwnd) {
+      const o = top ? w.describeWindow(top) : null;
+      throw new ToolError(`At that point another window is in front ("${o ? o.title : 'unknown'}"). Focus "${win.title}" or move the covering window first.`);
+    }
+  }
+
+  async focus(win) {
+    this.assertUsable(win, { needVisible: false });
+    const ok = await w.bringToForeground(win.hwnd);
+    if (!ok) {
+      throw new ToolError(`Windows refused to bring "${win.title}" to the front (foreground lock). Click the window yourself once, then retry.`);
+    }
+    this.lastWindow = win.hwnd;
+  }
+
+  /** Make `win` the foreground window and verify the allowlist against what is really in front. */
+  async prepareKeyboard(win) {
+    await this.focus(win);
+    const fg = w.describeWindow(w.foregroundWindow());
+    this.assertUsable(fg);
+  }
+
+  log(entry) {
+    try {
+      fs.appendFileSync(this.config.logPath, JSON.stringify({ time: new Date().toISOString(), ...entry }) + '\n');
+    } catch (e) {
+      process.stderr.write(`win-input-mcp: could not write action log: ${e.message}\n`);
+    }
+  }
+}
+
+export const winSummary = (x) => (x ? { hwnd: x.hwnd, title: x.title, process: x.process } : null);
