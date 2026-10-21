@@ -17,7 +17,7 @@ const DEFAULTS = {
   stopChord: 'alt+esc', // emergency stop keys (env WIN_INPUT_STOP_CHORD, meant for tests)
   overlay: true, // banner on screen while a tool runs
   humanMotion: true, // pointer glides along a curve instead of jumping
-  humanTyping: true, // type one character at a time at a human pace
+  typeSpeed: 1, // default speed multiplier for typing waits (2 = half the waits, 0 = none); env WIN_INPUT_TYPE_SPEED
   typeMinMs: 60,
   typeMaxMs: 200,
   typeCapMs: 60000, // longer texts are sped up to finish within this
@@ -46,7 +46,7 @@ export function loadConfig(env = process.env) {
   if (env.WIN_INPUT_AUTH) cfg.auth = !/^(0|false|no)$/i.test(env.WIN_INPUT_AUTH);
   if (env.WIN_INPUT_AUTH_FILE) cfg.authFile = env.WIN_INPUT_AUTH_FILE;
   if (env.WIN_INPUT_AUTH_TIMEOUT_MS) cfg.authTimeoutMs = Number(env.WIN_INPUT_AUTH_TIMEOUT_MS); // test-only
-  if (env.WIN_INPUT_HUMAN_TYPING) cfg.humanTyping = !/^(0|false|no)$/i.test(env.WIN_INPUT_HUMAN_TYPING);
+  if (env.WIN_INPUT_TYPE_SPEED) cfg.typeSpeed = Number(env.WIN_INPUT_TYPE_SPEED);
   if (env.WIN_INPUT_OVERLAY) cfg.overlay = !/^(0|false|no)$/i.test(env.WIN_INPUT_OVERLAY);
   if (env.WIN_INPUT_HUMAN_MOTION) cfg.humanMotion = !/^(0|false|no)$/i.test(env.WIN_INPUT_HUMAN_MOTION);
   cfg.denylist = cfg.denylist.map((s) => String(s).trim().toLowerCase()).filter(Boolean);

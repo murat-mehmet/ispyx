@@ -36,7 +36,8 @@ export const randomDuration = (min = 300, max = 1000, rand = Math.random) => Mat
  * spaces and punctuation, now and then a short "thinking" pause. If the total would exceed capMs the
  * pauses are scaled down so long texts still finish (use the clipboard for really long text).
  */
-export function typingDelays(text, { min = 60, max = 200, capMs = 60000 } = {}, rand = Math.random) {
+/** Pause (ms) after each character. `speed` divides every wait (2 = twice as fast, 0.5 = twice as slow). */
+export function typingDelays(text, { min = 60, max = 200, capMs = 60000, speed = 1 } = {}, rand = Math.random) {
   const chars = [...text];
   const d = chars.map((ch, i) => {
     let ms = between(rand, min, max);
@@ -46,5 +47,5 @@ export function typingDelays(text, { min = 60, max = 200, capMs = 60000 } = {}, 
   });
   const total = d.reduce((a, b) => a + b, 0);
   const k = total > capMs ? capMs / total : 1;
-  return d.map((ms) => Math.max(8, Math.round(ms * k)));
+  return d.map((ms) => Math.max(1, Math.round((ms * k) / speed)));
 }

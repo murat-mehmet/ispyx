@@ -64,7 +64,7 @@ Other keys: `maxTypeLength` (default 10000).
 
 By default the pointer **glides** to every target (`click`, `move`, `mouse_down`/`mouse_up`, `scroll`, and the travel part of `drag`): a gently curved path (cubic Bezier, random bend side and size) with a smooth minimum-jerk speed profile (slow start, fast middle, soft landing), taking a **random 300-1000 ms**, updated about every 8 ms. It always lands exactly on the target. The path is kept on the desktop, and the stop key is checked while moving.
 
-- Typing is human-paced too: `type_text` sends one character at a time, pausing a random 60-200 ms after each (longer after spaces and punctuation, now and then a short thinking pause). Texts that would take over 60 s are sped up to fit; use `set_clipboard` + `ctrl+v` for bulk text. `instant: true` types everything at once. Config: `humanTyping`, `typeMinMs`, `typeMaxMs`, `typeCapMs`; env `WIN_INPUT_HUMAN_TYPING=0` turns it off.
+- Typing is human-paced too: `type_text` sends one character at a time, pausing a random 60-200 ms after each (longer after spaces and punctuation, now and then a short thinking pause). Texts that would take over 60 s are sped up to fit; use `set_clipboard` + `ctrl+v` for bulk text. Typing is always human-paced (there is no `instant`). `speed` divides the waits: default `1`; `2` = twice as fast (half the waits), `0.5` = twice as slow, `0` = no waits at all (everything at once). Per call: `type_text { speed }`; default: config `typeSpeed` or env `WIN_INPUT_TYPE_SPEED`. Other config: `typeMinMs`, `typeMaxMs`, `typeCapMs`.
 - Scrolling is smoothed the same way: the amount is spread over ~80-120 small wheel events along the same speed curve, so pages scroll continuously.
 - Per call: `instant: true` jumps; `durationMs` fixes the travel time.
 - Config: `humanMotion` (default true), `moveMinMs` (300), `moveMaxMs` (1000); env `WIN_INPUT_HUMAN_MOTION=0` turns it off.
@@ -106,7 +106,7 @@ The server runs per-monitor DPI aware (v2): screenshots, clicks and cursor readi
 | `click` | left/right/middle, `double` or `clicks` up to 3, `modifiers` (`ctrl`, `shift`, `alt`, `win`) held during the click. |
 | `move`, `mouse_down`, `mouse_up`, `drag` | Pointer control. `drag` moves in steps (HTML5 drag-and-drop needs them) and takes `modifiers`. Held buttons are released on kill switch or shutdown. |
 | `scroll` | **Smooth** wheel at a point (spread over many small wheel events, 300-1000 ms plus ~40 ms per notch; `instant: true` for one jump; `durationMs` to fix it): `amount` vertical notches (+ up), `horizontal` notches (+ right), optional `modifiers` (e.g. ctrl+wheel to zoom). |
-| `type_text` | Unicode key events (Turkish and other non-ASCII). Refused in password fields. Goes to the foreground window, or to `hwnd`/`title` after focusing it. |
+| `type_text` | Unicode key events (Turkish and other non-ASCII), one character at a time at a human pace; `speed` multiplier (1 default, 2 = half the waits, 0 = no waits). Refused in password fields. Goes to the foreground window, or to `hwnd`/`title` after focusing it. |
 | `press_keys` | Chords such as `ctrl+v`, `alt+tab`, `win+r`, `win+d`, `f5`; several separated by spaces. Windows key allowed. |
 | `key_down`, `key_up` | Hold and release keys (e.g. shift for a multi-select). Released automatically on kill switch or shutdown. |
 | `wait` | Pause up to 60 s (stop key checked while waiting). |

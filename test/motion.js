@@ -36,6 +36,12 @@ const check = (name, ok, detail = '') => {
   check('typing delays are random within 60-200 ms (longer after spaces/punctuation)', d.length === 24 && new Set(d).size > 12 && d.every((x) => x >= 60 && x <= 200 * 1.8 + 600), `${Math.min(...d)}-${Math.max(...d)} ms`);
   const long = typingDelays('x'.repeat(2000), { capMs: 60000 });
   check('long text is sped up to fit the cap', long.reduce((a, b) => a + b, 0) <= 60500);
+  const sum = (a) => a.reduce((x, y) => x + y, 0);
+  const seq = (s) => { let i = 0; return () => [0.2, 0.9, 0.4, 0.7][i++ % 4]; }; // fixed "random" numbers so only speed differs
+  const base = sum(typingDelays('hello world', {}, seq()));
+  const fast = sum(typingDelays('hello world', { speed: 2 }, seq()));
+  const slow = sum(typingDelays('hello world', { speed: 0.5 }, seq()));
+  check('speed 2 halves the waits, 0.5 doubles them', Math.abs(fast - base / 2) < 12 && Math.abs(slow - base * 2) < 12, `${base} / ${fast} / ${slow} ms`);
 }
 
 // live: through the real server

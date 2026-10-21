@@ -46,7 +46,7 @@ async function copyAfter(client, chord) {
 async function navigate(client, url) {
   await keys(client, 'ctrl+l');
   await sleep(300);
-  const r = await call(client, 'type_text', { text: url, instant: url.startsWith('data:') }); // the long local test URL is pasted fast; real addresses are typed at human pace
+  const r = await call(client, 'type_text', { text: url, speed: url.startsWith('data:') ? 0 : 1 }); // the long local test URL is typed without waits; real addresses at human pace
   if (r.isError) throw new Error('type address: ' + r.data);
   await keys(client, 'enter');
 }
