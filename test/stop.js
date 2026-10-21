@@ -64,7 +64,7 @@ try {
   w.keysUp([0x12, 0x87]);
   const res = await inflight;
   const took = performance.now() - t0;
-  check('running tool is aborted with an error', res.isError && /STOPPED BY THE USER/.test(res.text) && /Alt\+Esc/.test(res.text), res.text.slice(0, 80));
+  check('running tool is aborted with an error', res.isError && /STOPPED BY THE USER/.test(res.text) && /Alt\+F24/.test(res.text), res.text.slice(0, 80));
   check('abort is quick (not the full 6 s)', took < 1500, `${Math.round(took)} ms`);
   const after = await call('list_windows');
   check('later calls are refused', after.isError && /STOPPED BY THE USER/.test(after.text));
