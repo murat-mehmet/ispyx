@@ -23,7 +23,7 @@ check('png round trip', back.width === 2 && back.rgba[0] === 30 && back.rgba[1] 
 // keys
 check('parse ctrl+shift+t', JSON.stringify(parseSequence('ctrl+shift+t')[0]) === JSON.stringify([0x11, 0x10, 0x54]));
 check('parse two chords', parseSequence('ctrl+a ctrl+c').length === 2);
-check('win key refused', (() => { try { parseSequence('win+r'); return false; } catch { return true; } })());
+check('win key parses', parseSequence('win+r')[0][0] === 0x5b);
 check('ctrl+v counts as content insertion', insertsContent(parseSequence('ctrl+v')[0]) && !insertsContent(parseSequence('ctrl+a')[0]));
 
 // password detection against our own Edit controls

@@ -1,6 +1,6 @@
 # win-input-mcp
 
-Local Windows desktop-control MCP server. Lets an agent see one chosen window and click, drag, scroll and type into it. Node 22+, stdio only (opens no network port), `koffi` for Win32 calls, `@modelcontextprotocol/sdk` for MCP.
+Local Windows desktop-control MCP server. Lets an agent work like a person at the computer: see the screen or one window, click, drag, scroll, type, use hotkeys and the clipboard. Node 22+, stdio only (opens no network port), `koffi` for Win32 calls, `@modelcontextprotocol/sdk` for MCP.
 
 ## Install
 
@@ -37,54 +37,79 @@ Any MCP client (JSON form):
 }
 ```
 
-## Allowlist and config
+## Modes and config
 
-An action runs only on a window whose process is on the allowlist; any other window is refused with an error (`list_windows` still shows it). Default: `chrome.exe`, `msedge.exe`.
+Two modes, set by `global` in the config:
 
-Change it in one of three ways (later wins):
+| Mode | Behaviour |
+| --- | --- |
+| **global** (default) | Works like a person at the computer: any window, the taskbar, any monitor, in absolute desktop coordinates. Only the `denylist` is refused. |
+| **restricted** (`"global": false`) | An action runs only on a window whose process is in `allowlist` (default `chrome.exe`, `msedge.exe`); anything else is refused with an error. |
 
-1. `config.json` in the project root (see `config.example.json`): `{ "allowlist": ["chrome.exe"], "logPath": "logs/actions.jsonl" }`
+`denylist` applies in both modes (default: `keepass.exe`, `keepassxc.exe`, `1password.exe`, `bitwarden.exe`, so password managers are never driven).
+
+Settings, later wins:
+
+1. `config.json` in the project root (see `config.example.json`): `{ "global": true, "allowlist": [...], "denylist": [...], "logPath": "logs/actions.jsonl" }`
 2. A config file elsewhere, via env `WIN_INPUT_MCP_CONFIG=<path>`
-3. Env `WIN_INPUT_ALLOWLIST=chrome.exe,msedge.exe,notepad.exe` (comma separated) and `WIN_INPUT_LOG=<path>`
+3. Env: `WIN_INPUT_GLOBAL=0|1`, `WIN_INPUT_ALLOWLIST=chrome.exe,msedge.exe` (naming an allowlist this way also switches to restricted mode unless `WIN_INPUT_GLOBAL` says otherwise), `WIN_INPUT_DENYLIST=a.exe,b.exe`, `WIN_INPUT_LOG=<path>`
 
-Other config keys: `killCornerPx` (default 2), `maxTypeLength` (default 10000).
+Other keys: `killCornerPx` (default 2), `maxTypeLength` (default 10000).
 
 ## Action log
 
-Every action, refusal and error is appended as one JSON line to `G:\win-input-mcp\logs\actions.jsonl` (override with `logPath` or `WIN_INPUT_LOG`). Fields: `time`, `tool`, `window` (hwnd, title, process), `coords` (window-relative and screen), `args` (including typed text), `ok`, `error`. Text aimed at a password field is never logged.
+Every action, refusal and error is appended as one JSON line, with a timestamp, to `G:\win-input-mcp\logs\actions.jsonl` (override with `logPath` or `WIN_INPUT_LOG`). Fields: `time`, `tool`, `window` (hwnd, title, process; in global mode the window under the pointer), `coords` (as given and in screen pixels), `args` (including typed text), `ok`, `error`. Text aimed at a password field is never logged (only the character count of the refused text). `get_clipboard` logs the length only. Kill-switch trips are logged.
+
+## Coordinates
+
+The server runs per-monitor DPI aware (v2): screenshots, clicks and cursor readings share one physical-pixel space, the **virtual desktop** (origin at the primary monitor's top-left; monitors to the left or above have negative coordinates).
+
+`click`, `move`, `mouse_down`, `mouse_up`, `drag` and `scroll` take a `space`:
+
+- `screen`: absolute desktop pixels. Default when no `hwnd`/`title` is given.
+- `window`: pixels of the window's own screenshot (`screenshot_window`); the server maps them back with the window's current position and the screenshot scale, focuses the window first, and refuses points covered by another window. Default when `hwnd`/`title` is given.
+- `shot`: pixels of the last `screenshot_screen` image (the server applies that image's `rect` and `scale`).
 
 ## Tools
 
 | Tool | Notes |
 | --- | --- |
-| `list_windows` | Visible top-level windows: hwnd, title, process, rect, allowed. |
-| `focus_window` | Restores if minimized, brings to front (AttachThreadInput and Alt-key workarounds for the foreground lock). |
-| `screenshot_window` | That window only, via `PrintWindow(PW_RENDERFULLCONTENT)`. Returns PNG + `scale` + `rect`. |
-| `screenshot_screen` | A whole monitor. |
-| `click`, `move`, `drag`, `scroll` | Coordinates are **screenshot pixels relative to the window**; the server maps them back with the window's current rect and the scale of the last screenshot of that window. Refused if another window covers the point. |
-| `type_text` | Unicode key events (Turkish and other non-ASCII). Refused in password fields. |
-| `press_keys` | `ctrl+v`, `enter`, `ctrl+a ctrl+c`, `f5`... No Windows key. |
-| `set_clipboard` | `text`, `imagePath` (pastes as a picture) or `filePath` (pastes as a file). |
+| `list_windows` | Visible top-level windows including the taskbar (`Shell_TrayWnd`): hwnd, title, class, process, rect, allowed, elevated; `includeUntitled` for all. |
+| `list_monitors`, `cursor_position` | Monitor rectangles + virtual desktop bounds; pointer position. |
+| `focus_window` | Any window outside the denylist: restores if minimized, brings to front (AttachThreadInput and Alt-key workarounds for the foreground lock). |
+| `screenshot_window` | One window via `PrintWindow(PW_RENDERFULLCONTENT)`. Returns PNG + `scale` + `rect`. |
+| `screenshot_screen` | One monitor (`monitor`), everything (`all: true`) or a `region` in desktop pixels. Returns `rect` + `scale`. |
+| `click` | left/right/middle, `double` or `clicks` up to 3, `modifiers` (`ctrl`, `shift`, `alt`, `win`) held during the click. |
+| `move`, `mouse_down`, `mouse_up`, `drag` | Pointer control. `drag` moves in steps (HTML5 drag-and-drop needs them) and takes `modifiers`. Held buttons are released on kill switch or shutdown. |
+| `scroll` | Wheel at a point: `amount` vertical notches (+ up), `horizontal` notches (+ right), optional `modifiers` (e.g. ctrl+wheel to zoom). |
+| `type_text` | Unicode key events (Turkish and other non-ASCII). Refused in password fields. Goes to the foreground window, or to `hwnd`/`title` after focusing it. |
+| `press_keys` | Chords such as `ctrl+v`, `alt+tab`, `win+r`, `win+d`, `f5`; several separated by spaces. Windows key allowed. |
+| `key_down`, `key_up` | Hold and release keys (e.g. shift for a multi-select). Released automatically on kill switch or shutdown. |
+| `wait` | Pause up to 60 s (kill switch checked while waiting). |
+| `set_clipboard`, `get_clipboard` | Write text / image / file; read text (reports whether an image or files are present). |
 
-All window tools take `hwnd` or `title` (substring); if omitted, the last used window is targeted.
-
-Typical flow: `list_windows` → `screenshot_window` → read coordinates off the image → `click`/`type_text` → `screenshot_window` to check.
+Typical flow: `screenshot_screen` → read coordinates off the image → `click` (`space: "shot"`) / `type_text` → `screenshot_screen` to check.
 
 ## Safety
 
-- **Kill switch:** move the mouse into the top-left screen corner. Every action is refused until the server restarts. A background watcher catches quick flicks between actions.
-- **DPI:** the process sets per-monitor-aware v2 at start, so screenshots, clicks and cursor positions share one physical-pixel space.
+- **Kill switch:** move the mouse into the top-left screen corner. Every action is refused until the server restarts; held keys and buttons are released. A background watcher catches quick flicks between actions. Points inside the corner are never clicked.
 - **Password fields:** `type_text` (and paste chords) are refused when the focused control is a password field (Win32 `ES_PASSWORD` and UI Automation `IsPassword`, which covers browser fields). If the check cannot run, the action is refused.
-- **No credentials:** the server never reads, stores or types saved passwords. Log in yourself.
-- **Plain errors** for: foreground lock refused, window minimized / not capturable, elevated target (UIPI), locked screen, kill switch, not allowlisted.
+- **No credentials:** the server never reads, stores or types saved passwords, and drives no password manager (default denylist). Log in yourself.
+- **Plain errors** for: foreground lock refused, window minimized / not capturable, elevated target (UIPI), locked screen, kill switch, denied or not allowlisted.
 
-## Limits
+## What is impossible (Windows rules)
 
-- `SendInput` reaches only the foreground window; the server focuses first and verifies.
-- Elevated (admin) windows cannot be driven unless the server is elevated too.
-- A locked screen or a minimized RDP session takes no input.
+- **UAC prompts, the lock screen and the Ctrl+Alt+Del screen** run on the secure desktop. No input or capture is possible there; the server reports "screen is locked (or a secure prompt is showing)". Neither can `SendInput` produce Ctrl+Alt+Del.
+- **Elevated (administrator) windows** ignore input from a normal process (UIPI). The server refuses with a plain message; it works if the server itself is started elevated.
+- A **minimized RDP session** or locked workstation takes no input.
+- `SendInput` reaches only the foreground window; the server focuses first and verifies. Windows may refuse focus (foreground lock); the error says so.
+- Some games and apps with exclusive or protected rendering return black screenshots.
+
+## Notes
+
 - Notepad (WinUI) mangles a single input batch that mixes ASCII and non-ASCII characters; `type_text` therefore sends same-kind runs separately. Other apps were not tested.
-- Keyboard layout: Unicode input does not depend on the active layout. `type_text` returns the foreground layout id (`keyboardLayout`, e.g. `0x41f` Turkish, `0x409` US) for diagnosis. `press_keys` uses virtual keys, so letters in chords are layout-independent but punctuation keys (`,` `.` `;`...) follow the US virtual-key codes.
+- Keyboard layout: Unicode input does not depend on the active layout. `type_text` returns the foreground layout id (`keyboardLayout`, e.g. `0x41f` Turkish, `0x409` US). `press_keys` uses virtual keys, so letters in chords are layout-independent but punctuation keys (`,` `.` `;`...) follow the US virtual-key codes.
+- Alt+Tab through `SendInput` works for a quick switch; focus the target with `focus_window` when you need a specific window.
 
 ## Tests
 
@@ -92,6 +117,7 @@ Typical flow: `list_windows` → `screenshot_window` → read coordinates off th
 npm test        # unit checks (PNG, key parsing, password-field detection)
 npm run smoke   # drives the real server over stdio against a fresh Notepad tab
 npm run chrome-test   # Chrome end-to-end: Google search through the server (see below)
+npm run instagram-test # global mode: new Chrome window, scroll checks, Instagram login page (look only)
 ```
 
 The smoke test opens Notepad, opens a **new tab** (Notepad restores your earlier tabs, which must stay untouched), types `Merhaba ğüşıöç`, `ctrl+a`, checks the text by copying it back, takes a screenshot, verifies that `move` lands on the mapped screen pixel, drags across the text and checks the selection is a prefix of it, checks that a non-allowlisted window is refused, empties and closes the tab and the window, then checks the kill switch with a second server instance. Notepad is added to the allowlist for the test only. Screenshots are written to `test/out/`.
@@ -112,3 +138,13 @@ Limits found:
 - Language: the URL pins `hl=en`, so labels are English; result text can still be Turkish.
 - Result titles are heuristic: Google's layout changes, and AI Overview / site-name lines may be picked up instead of page titles. The title/URL/text checks are the real assertions.
 - Needs the taskbar Chrome button to be pinned or running, an unlocked screen, and Chrome not elevated.
+
+### Instagram login-page test (`npm run instagram-test`)
+
+Runs the server in **global mode**. Opens a new Chrome window with a global middle-click on the taskbar button, then:
+
+- scroll check on a local `data:` page (4000x3000 colour field): vertical and horizontal scroll, in global coordinates, both directions, verified by pixel colour from `screenshot_screen` regions
+- opens `https://www.instagram.com/accounts/login/`, waits for the title, saves a global screenshot (`test/out/instagram-login.png`) and reads the page through UI Automation (`test/ui-text.ps1`, read-only, no field values): asserts Instagram in title/URL/page, a username field, a password field and a log-in button
+- scrolls the page down and up, then closes only the window it opened
+
+It never types into or clicks anything on Instagram (the only text typed is the two addresses; the test asserts that from the action log), never logs in, and never touches a cookie banner or Google account chooser (Escape dismisses a floating Google sign-in prompt, nothing is chosen). The screenshot is taken before that Escape, so it can show such a prompt; it stays local in `test/out/` (git-ignored).

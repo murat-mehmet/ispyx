@@ -72,6 +72,8 @@ const f = {
   CloseDesktop: user32.func('bool CloseDesktop(intptr_t d)'),
   EnumDisplayMonitors: user32.func('bool EnumDisplayMonitors(intptr_t dc, RECT *clip, MonitorEnumProc *cb, intptr_t lparam)'),
   GetMonitorInfoW: user32.func('bool GetMonitorInfoW(intptr_t m, _Inout_ MONITORINFO *i)'),
+  GetClipboardData: user32.func('intptr_t GetClipboardData(uint32 fmt)'),
+  IsClipboardFormatAvailable: user32.func('bool IsClipboardFormatAvailable(uint32 fmt)'),
   OpenClipboard: user32.func('bool OpenClipboard(intptr_t owner)'),
   CloseClipboard: user32.func('bool CloseClipboard()'),
   EmptyClipboard: user32.func('bool EmptyClipboard()'),
@@ -92,6 +94,7 @@ const f = {
   GetCurrentThreadId: kernel32.func('uint32 GetCurrentThreadId()'),
   GlobalAlloc: kernel32.func('intptr_t GlobalAlloc(uint32 flags, size_t n)'),
   GlobalLock: kernel32.func('intptr_t GlobalLock(intptr_t h)'),
+  GlobalSize: kernel32.func('size_t GlobalSize(intptr_t h)'),
   GlobalUnlock: kernel32.func('bool GlobalUnlock(intptr_t h)'),
   GlobalFree: kernel32.func('intptr_t GlobalFree(intptr_t h)'),
   CopyToMem: kernel32.func('RtlMoveMemory', 'void', ['intptr_t', 'uint8_t *', 'size_t']),
@@ -204,13 +207,13 @@ function isCloaked(hwnd) {
   return f.DwmGetWindowAttribute(hwnd, 14, v, 4) === 0 && v[0] !== 0;
 }
 
-export function listWindows() {
+export function listWindows({ includeUntitled = false } = {}) {
   const out = [];
   const cb = koffi.register((hwnd) => {
     try {
       if (!f.IsWindowVisible(hwnd) || isCloaked(hwnd)) return true;
       const title = getTitle(hwnd);
-      if (!title) return true;
+      if (!title && !includeUntitled && !/^Shell_(Secondary)?TrayWnd$/.test(getClass(hwnd))) return true;
       out.push(describeWindow(hwnd));
     } catch { /* skip a window that vanished mid-enumeration */ }
     return true;
@@ -388,6 +391,7 @@ export function mouseMoveTo(x, y) {
 export const mouseDown = (button = 'left') => send([mouseInput(BUTTONS[button][0])]);
 export const mouseUp = (button = 'left') => send([mouseInput(BUTTONS[button][1])]);
 export const mouseWheel = (notches) => send([mouseInput(MOUSE.WHEEL, Math.round(notches * 120))]);
+export const mouseHWheel = (notches) => send([mouseInput(0x1000, Math.round(notches * 120))]); // positive = right
 
 // Notepad (and likely other XAML apps) mangle a single SendInput batch that mixes ASCII and non-ASCII
 // packets: the whole batch comes out as one repeated character. So each run of same-kind characters is
@@ -418,7 +422,14 @@ export async function typeUnicode(text) {
   }
 }
 
-const EXTENDED = new Set([0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2d, 0x2e, 0x6f]);
+const EXTENDED = new Set([0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2d, 0x2e, 0x6f, 0x5b, 0x5c, 0x5d]);
+const kflag = (vk) => (EXTENDED.has(vk) ? 1 : 0);
+export function keysDown(vks) {
+  send(vks.map((vk) => keyInput(vk, f.MapVirtualKeyW(vk, 0), kflag(vk))));
+}
+export function keysUp(vks) {
+  send([...vks].reverse().map((vk) => keyInput(vk, f.MapVirtualKeyW(vk, 0), kflag(vk) | 2)));
+}
 export function pressVirtualKeys(vks) {
   const flag = (vk) => (EXTENDED.has(vk) ? 1 : 0);
   const scan = (vk) => f.MapVirtualKeyW(vk, 0);
@@ -453,6 +464,33 @@ function putGlobal(fmt, bytes) {
   if (!f.SetClipboardData(fmt, h)) {
     f.GlobalFree(h);
     throw new Error('Windows refused the clipboard data.');
+  }
+}
+
+export function getClipboardText() {
+  let opened = false;
+  for (let i = 0; i < 10 && !opened; i++) {
+    opened = f.OpenClipboard(0);
+    if (!opened) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30);
+  }
+  if (!opened) throw new Error('The clipboard is locked by another program. Try again in a moment.');
+  try {
+    const formats = { text: f.IsClipboardFormatAvailable(13), image: f.IsClipboardFormatAvailable(2) || f.IsClipboardFormatAvailable(8), files: f.IsClipboardFormatAvailable(15) };
+    let text = null;
+    if (formats.text) {
+      const h = f.GetClipboardData(13);
+      if (h) {
+        const size = Number(f.GlobalSize(h));
+        const p = f.GlobalLock(h);
+        const buf = Buffer.alloc(size);
+        f.CopyFromMem(buf, p, size);
+        f.GlobalUnlock(h);
+        text = buf.toString('utf16le').replace(/ .*$/s, '');
+      }
+    }
+    return { text, formats };
+  } finally {
+    f.CloseClipboard();
   }
 }
 

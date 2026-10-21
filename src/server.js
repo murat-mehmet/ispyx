@@ -21,19 +21,25 @@ const guard = new Guard(config);
 guard.startWatching();
 
 const target = {
-  hwnd: z.number().int().optional().describe('Window handle from list_windows.'),
-  title: z.string().optional().describe('Part of the window title (case-insensitive). Ignored when hwnd is given. If both are omitted the last window used is targeted.'),
+  hwnd: z.number().int().optional().describe('Window handle from list_windows. Window-relative mode and focusing use it.'),
+  title: z.string().optional().describe('Part of a window title (case-insensitive). Ignored when hwnd is given.'),
 };
+const space = z.enum(['window', 'screen', 'shot']).optional().describe(
+  'Coordinate space. "screen": absolute desktop pixels (virtual-desktop space, may be negative on monitors left of / above the primary). ' +
+  '"window": screenshot pixels inside the window given by hwnd/title (see screenshot_window). ' +
+  '"shot": pixels of the last screenshot_screen image. Default: "window" when hwnd/title is given, otherwise "screen".');
 const xy = {
-  x: z.number().describe('X in screenshot pixels, relative to the window (top-left of the screenshot is 0,0).'),
-  y: z.number().describe('Y in screenshot pixels, relative to the window.'),
+  x: z.number().describe('X in the chosen coordinate space.'),
+  y: z.number().describe('Y in the chosen coordinate space.'),
 };
 const buttons = z.enum(['left', 'right', 'middle']).default('left');
+const modifiers = z.array(z.enum(['ctrl', 'shift', 'alt', 'win'])).optional().describe('Keys held down during the action, e.g. ["ctrl"] for ctrl+click.');
+const MOD_VK = { ctrl: 0x11, shift: 0x10, alt: 0x12, win: 0x5b };
 
 const text = (s) => ({ content: [{ type: 'text', text: s }] });
 const json = (o) => text(JSON.stringify(o));
 
-const server = new McpServer({ name: 'win-input-mcp', version: '1.0.0' });
+const server = new McpServer({ name: 'win-input-mcp', version: '2.0.0' });
 
 /** Wraps a tool: kill switch + lock check before, JSONL log after, plain errors out. */
 function action(name, handler, { session = true } = {}) {
@@ -67,29 +73,71 @@ function redact(name, args) {
   return a;
 }
 
-async function pointerTarget(args, entry, { focus = true } = {}) {
-  const win = guard.resolve(args);
-  guard.assertUsable(win, { needVisible: false });
-  if (focus) await guard.focus(win);
-  guard.assertUsable(w.describeWindow(win.hwnd));
-  entry.window = winSummary(win);
-  return w.describeWindow(win.hwnd);
+/**
+ * Returns map(x, y) -> { sx, sy } in desktop pixels for the chosen space. In window space the window is
+ * focused first and each point must belong to it; otherwise the window under the point must be usable.
+ */
+async function pointMapper(args, entry) {
+  const sp = args.space ?? (args.hwnd || args.title ? 'window' : 'screen');
+  entry.space = sp;
+  if (sp === 'window') {
+    if (!args.hwnd && !args.title) throw new ToolError('Window space needs hwnd or title.');
+    const win = guard.resolve(args);
+    guard.assertUsable(win, { needVisible: false });
+    await guard.focus(win);
+    guard.assertUsable(w.describeWindow(win.hwnd));
+    entry.window = winSummary(win);
+    return (x, y) => {
+      const p = guard.toScreen(w.describeWindow(win.hwnd), x, y);
+      guard.assertPointOwned(win, p.sx, p.sy);
+      return p;
+    };
+  }
+  return (x, y) => {
+    const p = guard.toScreenGlobal(x, y, sp);
+    const under = guard.assertPointUsable(p.sx, p.sy);
+    if (under) entry.window = winSummary(under);
+    return p;
+  };
+}
+
+/** Hold modifier keys for the duration of fn. */
+async function withModifiers(mods, fn) {
+  const vks = (mods ?? []).map((m) => MOD_VK[m]);
+  if (vks.length) w.keysDown(vks);
+  try {
+    return await fn();
+  } finally {
+    if (vks.length) w.keysUp(vks);
+  }
 }
 
 // ---------------------------------------------------------------- tools
 
 server.registerTool('list_windows', {
-  description: 'List visible top-level windows with handle, title, process and screen rectangle. Windows from programs outside the allowlist are shown but cannot be acted on.',
-}, action('list_windows', async () => {
-  const list = w.listWindows().map((x) => ({
-    hwnd: x.hwnd, title: x.title, process: x.process, rect: x.rect,
+  description: 'List visible top-level windows with handle, title, process and screen rectangle, including the taskbar (Shell_TrayWnd). Use includeUntitled for every visible top-level window.',
+  inputSchema: { includeUntitled: z.boolean().default(false) },
+}, action('list_windows', async (args) => {
+  const list = w.listWindows({ includeUntitled: !!args.includeUntitled }).map((x) => ({
+    hwnd: x.hwnd, title: x.title, className: x.className, process: x.process, rect: x.rect,
     minimized: x.minimized, allowed: guard.allowed(x), elevated: x.elevated,
   }));
-  return json({ allowlist: config.allowlist, windows: list });
+  return json({ global: config.global, allowlist: config.allowlist, denylist: config.denylist, foreground: w.foregroundWindow(), windows: list });
 }, { session: false }));
 
+server.registerTool('list_monitors', {
+  description: 'Monitors with their desktop rectangles and the virtual desktop bounds (physical pixels).',
+}, action('list_monitors', async () => {
+  const mons = w.listMonitors().sort((a, b) => Number(b.primary) - Number(a.primary)).map((m, index) => ({ index, ...m }));
+  return json({ virtualScreen: w.virtualScreen(), monitors: mons });
+}, { session: false }));
+
+server.registerTool('cursor_position', {
+  description: 'Current mouse pointer position in desktop pixels.',
+}, action('cursor_position', async () => json(w.cursorPos()), { session: false }));
+
 server.registerTool('focus_window', {
-  description: 'Restore the window if minimized and bring it to the foreground.',
+  description: 'Restore the window if minimized and bring it to the foreground. Works for any window outside the denylist.',
   inputSchema: target,
 }, action('focus_window', async (args, entry) => {
   const win = guard.resolve(args);
@@ -99,9 +147,10 @@ server.registerTool('focus_window', {
 }));
 
 server.registerTool('screenshot_window', {
-  description: 'PNG of one window only (works for Chrome and GPU-rendered content). Returns the image plus `scale` and `rect`; click/move/drag/scroll take coordinates in these screenshot pixels.',
+  description: 'PNG of one window only (works for Chrome and GPU-rendered content). Returns the image plus `scale` and `rect`; with space "window", click/move/drag/scroll take coordinates in these screenshot pixels.',
   inputSchema: { ...target, maxWidth: z.number().int().min(100).max(8000).default(1280).describe('Maximum image width in pixels.') },
 }, action('screenshot_window', async (args, entry) => {
+  if (!args.hwnd && !args.title) throw new ToolError('Give hwnd or title, or use screenshot_screen for the whole desktop.');
   const win = guard.resolve(args);
   guard.assertUsable(win, { needVisible: false });
   entry.window = winSummary(win);
@@ -119,107 +168,169 @@ server.registerTool('screenshot_window', {
 }));
 
 server.registerTool('screenshot_screen', {
-  description: 'PNG of a whole monitor, for checking the overall state. Not tied to any window; clicks still go through window-relative coordinates.',
+  description: 'PNG of the desktop: one monitor (default: primary), all monitors together (all: true), or a rectangle (region, in desktop pixels). Returns `rect` (desktop pixels) and `scale`; a point (x, y) in the image is desktop pixel (rect.left + x/scale, rect.top + y/scale), or use space "shot" in the pointer tools.',
   inputSchema: {
-    monitor: z.number().int().min(0).default(0).describe('Monitor index (0 = primary).'),
+    monitor: z.number().int().min(0).optional().describe('Monitor index from list_monitors (0 = primary).'),
+    all: z.boolean().optional().describe('Capture the whole virtual desktop (all monitors).'),
+    region: z.object({ x: z.number().int(), y: z.number().int(), width: z.number().int().min(1), height: z.number().int().min(1) }).optional(),
     maxWidth: z.number().int().min(100).max(8000).default(1280),
   },
 }, action('screenshot_screen', async (args, entry) => {
-  const mons = w.listMonitors().sort((a, b) => Number(b.primary) - Number(a.primary));
-  const m = mons[args.monitor ?? 0];
-  if (!m) throw new ToolError(`No monitor ${args.monitor}; there are ${mons.length}.`);
-  entry.monitor = args.monitor ?? 0;
-  const cap = w.captureScreenRect(m);
+  const v = w.virtualScreen();
+  let rect;
+  if (args.region) {
+    const r = args.region;
+    const left = Math.max(r.x, v.x), top = Math.max(r.y, v.y);
+    const right = Math.min(r.x + r.width, v.x + v.width), bottom = Math.min(r.y + r.height, v.y + v.height);
+    if (right <= left || bottom <= top) throw new ToolError('That region is outside the desktop.');
+    rect = { left, top, width: right - left, height: bottom - top };
+  } else if (args.all) {
+    rect = { left: v.x, top: v.y, width: v.width, height: v.height };
+  } else {
+    const mons = w.listMonitors().sort((a, b) => Number(b.primary) - Number(a.primary));
+    const m = mons[args.monitor ?? 0];
+    if (!m) throw new ToolError(`No monitor ${args.monitor}; there are ${mons.length}.`);
+    rect = { left: m.left, top: m.top, width: m.width, height: m.height };
+  }
+  entry.rect = rect;
+  const cap = w.captureScreenRect(rect);
   const img = shrinkToPng(cap, args.maxWidth ?? 1280);
+  guard.lastShot = { rect, scale: img.scale };
   return {
     content: [
       { type: 'image', data: img.png.toString('base64'), mimeType: 'image/png' },
-      { type: 'text', text: JSON.stringify({ monitor: args.monitor ?? 0, scale: img.scale, rect: m, width: img.width, height: img.height }) },
+      { type: 'text', text: JSON.stringify({ scale: img.scale, rect, width: img.width, height: img.height, cursor: w.cursorPos() }) },
     ],
   };
 }));
 
 server.registerTool('click', {
-  description: 'Click at window-relative screenshot coordinates. Focuses the window first.',
-  inputSchema: { ...target, ...xy, button: buttons, double: z.boolean().default(false) },
+  description: 'Click at a point: left/right/middle button, double or triple (clicks), optional held modifiers (ctrl/shift/alt/win). In window space the window is focused first.',
+  inputSchema: { ...target, space, ...xy, button: buttons, double: z.boolean().default(false), clicks: z.number().int().min(1).max(3).optional(), modifiers },
 }, action('click', async (args, entry) => {
-  const win = await pointerTarget(args, entry);
-  const p = guard.toScreen(win, args.x, args.y);
-  guard.assertPointOwned(win, p.sx, p.sy);
+  const map = await pointMapper(args, entry);
+  const p = map(args.x, args.y);
   entry.coords = { x: args.x, y: args.y, screen: { x: p.sx, y: p.sy } };
   const b = args.button ?? 'left';
+  const n = args.clicks ?? (args.double ? 2 : 1);
   w.mouseMoveTo(p.sx, p.sy);
   await w.sleep(30);
   guard.checkKill();
-  for (let i = 0; i < (args.double ? 2 : 1); i++) {
-    w.mouseDown(b);
-    w.mouseUp(b);
-    if (args.double) await w.sleep(40);
-  }
+  await withModifiers(args.modifiers, async () => {
+    for (let i = 0; i < n; i++) {
+      w.mouseDown(b);
+      w.mouseUp(b);
+      if (i < n - 1) await w.sleep(40);
+    }
+  });
   return json({ ok: true, screen: { x: p.sx, y: p.sy } });
 }));
 
 server.registerTool('move', {
-  description: 'Move the mouse pointer to window-relative screenshot coordinates.',
-  inputSchema: { ...target, ...xy },
+  description: 'Move the mouse pointer.',
+  inputSchema: { ...target, space, ...xy },
 }, action('move', async (args, entry) => {
-  const win = await pointerTarget(args, entry);
-  const p = guard.toScreen(win, args.x, args.y);
-  guard.assertPointOwned(win, p.sx, p.sy);
+  const map = await pointMapper(args, entry);
+  const p = map(args.x, args.y);
   entry.coords = { x: args.x, y: args.y, screen: { x: p.sx, y: p.sy } };
   w.mouseMoveTo(p.sx, p.sy);
   return json({ ok: true, screen: { x: p.sx, y: p.sy } });
 }));
 
+server.registerTool('mouse_down', {
+  description: 'Press and keep holding a mouse button (optionally after moving to x, y). Release with mouse_up. Held buttons are released automatically on the kill switch or shutdown.',
+  inputSchema: { ...target, space, x: z.number().optional(), y: z.number().optional(), button: buttons },
+}, action('mouse_down', async (args, entry) => {
+  const map = await pointMapper(args, entry);
+  if (args.x !== undefined && args.y !== undefined) {
+    const p = map(args.x, args.y);
+    entry.coords = { x: args.x, y: args.y, screen: { x: p.sx, y: p.sy } };
+    w.mouseMoveTo(p.sx, p.sy);
+    await w.sleep(30);
+  }
+  const b = args.button ?? 'left';
+  w.mouseDown(b);
+  guard.heldButtons.add(b);
+  return json({ ok: true, held: [...guard.heldButtons] });
+}));
+
+server.registerTool('mouse_up', {
+  description: 'Release a mouse button held with mouse_down (optionally after moving to x, y).',
+  inputSchema: { ...target, space, x: z.number().optional(), y: z.number().optional(), button: buttons },
+}, action('mouse_up', async (args, entry) => {
+  const map = await pointMapper(args, entry);
+  if (args.x !== undefined && args.y !== undefined) {
+    const p = map(args.x, args.y);
+    entry.coords = { x: args.x, y: args.y, screen: { x: p.sx, y: p.sy } };
+    w.mouseMoveTo(p.sx, p.sy);
+    await w.sleep(30);
+  }
+  const b = args.button ?? 'left';
+  w.mouseUp(b);
+  guard.heldButtons.delete(b);
+  return json({ ok: true, held: [...guard.heldButtons] });
+}));
+
 server.registerTool('drag', {
-  description: 'Press the left button at the start point, move to the end point in steps (needed for HTML5 drag-and-drop), release.',
+  description: 'Press the button at the start point, move to the end point in steps (needed for HTML5 drag-and-drop), release. Optional held modifiers.',
   inputSchema: {
-    ...target,
+    ...target, space,
     fromX: z.number(), fromY: z.number(), toX: z.number(), toY: z.number(),
     steps: z.number().int().min(1).max(500).default(20),
     delayMs: z.number().int().min(0).max(1000).default(10).describe('Pause between steps.'),
     button: buttons,
+    modifiers,
   },
 }, action('drag', async (args, entry) => {
-  const win = await pointerTarget(args, entry);
-  const a = guard.toScreen(win, args.fromX, args.fromY);
-  const z2 = guard.toScreen(win, args.toX, args.toY);
-  guard.assertPointOwned(win, a.sx, a.sy);
-  guard.assertPointOwned(win, z2.sx, z2.sy);
+  const map = await pointMapper(args, entry);
+  const a = map(args.fromX, args.fromY);
+  const z2 = map(args.toX, args.toY);
   entry.coords = { from: { x: args.fromX, y: args.fromY, screen: { x: a.sx, y: a.sy } }, to: { x: args.toX, y: args.toY, screen: { x: z2.sx, y: z2.sy } } };
   const steps = args.steps ?? 20;
   const delay = args.delayMs ?? 10;
   const b = args.button ?? 'left';
-  w.mouseMoveTo(a.sx, a.sy);
-  await w.sleep(40);
-  w.mouseDown(b);
-  try {
+  await withModifiers(args.modifiers, async () => {
+    w.mouseMoveTo(a.sx, a.sy);
     await w.sleep(40);
-    for (let i = 1; i <= steps; i++) {
-      guard.checkKill();
-      w.mouseMoveTo(Math.round(a.sx + ((z2.sx - a.sx) * i) / steps), Math.round(a.sy + ((z2.sy - a.sy) * i) / steps));
-      if (delay) await w.sleep(delay);
+    w.mouseDown(b);
+    guard.heldButtons.add(b);
+    try {
+      await w.sleep(40);
+      for (let i = 1; i <= steps; i++) {
+        guard.checkKill();
+        w.mouseMoveTo(Math.round(a.sx + ((z2.sx - a.sx) * i) / steps), Math.round(a.sy + ((z2.sy - a.sy) * i) / steps));
+        if (delay) await w.sleep(delay);
+      }
+      await w.sleep(40);
+    } finally {
+      w.mouseUp(b);
+      guard.heldButtons.delete(b);
     }
-    await w.sleep(40);
-  } finally {
-    w.mouseUp(b);
-  }
+  });
   return json({ ok: true, from: { x: a.sx, y: a.sy }, to: { x: z2.sx, y: z2.sy } });
 }));
 
 server.registerTool('scroll', {
-  description: 'Mouse wheel at a point. Positive amount scrolls up, negative down (in wheel notches).',
-  inputSchema: { ...target, ...xy, amount: z.number().min(-100).max(100) },
+  description: 'Mouse wheel at a point. `amount`: vertical notches, positive up, negative down. `horizontal`: horizontal notches, positive right, negative left. Either or both.',
+  inputSchema: {
+    ...target, space, ...xy,
+    amount: z.number().min(-100).max(100).optional(),
+    horizontal: z.number().min(-100).max(100).optional(),
+    modifiers,
+  },
 }, action('scroll', async (args, entry) => {
-  const win = await pointerTarget(args, entry);
-  const p = guard.toScreen(win, args.x, args.y);
-  guard.assertPointOwned(win, p.sx, p.sy);
-  entry.coords = { x: args.x, y: args.y, screen: { x: p.sx, y: p.sy }, amount: args.amount };
+  if (!args.amount && !args.horizontal) throw new ToolError('Give amount (vertical) and/or horizontal.');
+  const map = await pointMapper(args, entry);
+  const p = map(args.x, args.y);
+  entry.coords = { x: args.x, y: args.y, screen: { x: p.sx, y: p.sy }, amount: args.amount, horizontal: args.horizontal };
   w.mouseMoveTo(p.sx, p.sy);
   await w.sleep(30);
   guard.checkKill();
-  w.mouseWheel(args.amount);
-  return json({ ok: true });
+  await withModifiers(args.modifiers, async () => {
+    if (args.amount) w.mouseWheel(args.amount);
+    if (args.horizontal) w.mouseHWheel(args.horizontal);
+  });
+  return json({ ok: true, screen: { x: p.sx, y: p.sy } });
 }));
 
 function assertNotPassword() {
@@ -232,14 +343,27 @@ function assertNotPassword() {
   if (isPw) throw new ToolError('Refused: the focused field is a password field. Log in yourself; this server never types into password fields.');
 }
 
+/** Keyboard target: focus hwnd/title when given, otherwise whatever is in front. Verifies the foreground window. */
+async function keyboardTarget(args, entry) {
+  if (args.hwnd || args.title) {
+    const win = guard.resolve(args);
+    entry.window = winSummary(win);
+    await guard.prepareKeyboard(win);
+    return;
+  }
+  const fg = w.foregroundWindow();
+  if (!fg) throw new ToolError('No window has the keyboard focus. Use focus_window first.');
+  const d = w.describeWindow(fg);
+  entry.window = winSummary(d);
+  guard.assertUsable(d);
+}
+
 server.registerTool('type_text', {
-  description: 'Type text into the focused control using Unicode key events (Turkish and other non-ASCII characters work). Refused when the focused control is a password field. Pass hwnd/title to focus a window first; otherwise the current foreground window is used.',
+  description: 'Type text into the focused control using Unicode key events (Turkish and other non-ASCII characters work). Refused when the focused control is a password field. Pass hwnd/title to focus a window first; otherwise the current foreground window gets the text.',
   inputSchema: { ...target, text: z.string().min(1) },
 }, action('type_text', async (args, entry) => {
   if (args.text.length > config.maxTypeLength) throw new ToolError(`Text is longer than ${config.maxTypeLength} characters. Use set_clipboard and ctrl+v for long text.`);
-  const win = args.hwnd || args.title || guard.lastWindow ? guard.resolve(args) : w.describeWindow(w.foregroundWindow());
-  entry.window = winSummary(win);
-  await guard.prepareKeyboard(win);
+  await keyboardTarget(args, entry);
   try {
     assertNotPassword();
   } catch (e) {
@@ -252,19 +376,20 @@ server.registerTool('type_text', {
   return json({ ok: true, typed: args.text.length, keyboardLayout: '0x' + w.foregroundLayout().toString(16) });
 }));
 
-server.registerTool('press_keys', {
-  description: 'Press key chords, e.g. "ctrl+v", "enter", "ctrl+a", "alt+tab". Separate several chords with spaces ("ctrl+a ctrl+c"). The Windows key is not allowed.',
-  inputSchema: { ...target, keys: z.string().min(1) },
-}, action('press_keys', async (args, entry) => {
-  let chords;
+function parseKeys(keys) {
   try {
-    chords = parseSequence(args.keys);
+    return parseSequence(keys);
   } catch (e) {
     throw new ToolError(e.message);
   }
-  const win = args.hwnd || args.title || guard.lastWindow ? guard.resolve(args) : w.describeWindow(w.foregroundWindow());
-  entry.window = winSummary(win);
-  await guard.prepareKeyboard(win);
+}
+
+server.registerTool('press_keys', {
+  description: 'Press key chords, e.g. "ctrl+v", "enter", "alt+tab", "win+r", "win+d". Separate several chords with spaces ("ctrl+a ctrl+c"). Names: ctrl shift alt win enter tab esc space backspace delete home end pageup pagedown arrows f1-f24 a-z 0-9. Pass hwnd/title to focus a window first; otherwise the foreground window gets the keys.',
+  inputSchema: { ...target, keys: z.string().min(1) },
+}, action('press_keys', async (args, entry) => {
+  const chords = parseKeys(args.keys);
+  await keyboardTarget(args, entry);
   if (chords.some(insertsContent)) assertNotPassword();
   for (const c of chords) {
     guard.checkKill();
@@ -273,6 +398,50 @@ server.registerTool('press_keys', {
   }
   return json({ ok: true, chords: chords.length });
 }));
+
+server.registerTool('key_down', {
+  description: 'Press and hold keys (e.g. "shift" or "ctrl+shift") until key_up. Held keys are released automatically on the kill switch or shutdown.',
+  inputSchema: { ...target, keys: z.string().min(1) },
+}, action('key_down', async (args, entry) => {
+  const vks = parseKeys(args.keys).flat();
+  await keyboardTarget(args, entry);
+  w.keysDown(vks);
+  vks.forEach((k) => guard.heldKeys.add(k));
+  return json({ ok: true, held: guard.heldKeys.size });
+}));
+
+server.registerTool('key_up', {
+  description: 'Release keys held with key_down.',
+  inputSchema: { keys: z.string().min(1) },
+}, action('key_up', async (args) => {
+  const vks = parseKeys(args.keys).flat();
+  w.keysUp(vks);
+  vks.forEach((k) => guard.heldKeys.delete(k));
+  return json({ ok: true, held: guard.heldKeys.size });
+}));
+
+server.registerTool('wait', {
+  description: 'Pause (milliseconds, up to 60000), for page loads and animations. The kill switch is checked while waiting.',
+  inputSchema: { ms: z.number().int().min(0).max(60000) },
+}, action('wait', async (args) => {
+  let left = args.ms;
+  while (left > 0) {
+    const step = Math.min(left, 250);
+    await w.sleep(step);
+    left -= step;
+    guard.checkKill();
+  }
+  return json({ ok: true, waited: args.ms });
+}, { session: false }));
+
+server.registerTool('get_clipboard', {
+  description: 'Read the clipboard text. Also reports whether it holds an image or files. The text is returned to the caller but not written to the action log (only its length).',
+}, action('get_clipboard', async (args, entry) => {
+  const c = w.getClipboardText();
+  entry.length = c.text === null ? null : c.text.length;
+  entry.formats = c.formats;
+  return json(c);
+}, { session: false }));
 
 function setImageClipboard(imagePath) {
   return new Promise((resolve, reject) => {
@@ -310,4 +479,6 @@ server.registerTool('set_clipboard', {
 // ---------------------------------------------------------------- run
 
 await server.connect(new StdioServerTransport());
-guard.log({ tool: 'server_start', allowlist: config.allowlist, pid: process.pid });
+guard.log({ tool: 'server_start', global: config.global, allowlist: config.allowlist, denylist: config.denylist, pid: process.pid });
+process.on('exit', () => guard.releaseAll());
+process.stdin.on('close', () => { guard.releaseAll(); process.exit(0); });

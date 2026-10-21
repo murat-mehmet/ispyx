@@ -49,7 +49,7 @@ const client = await launch();
 let hwnd = 0;
 try {
   const tools = (await client.listTools()).tools.map((t) => t.name).sort();
-  const want = ['click', 'drag', 'focus_window', 'list_windows', 'move', 'press_keys', 'screenshot_screen', 'screenshot_window', 'scroll', 'set_clipboard', 'type_text'];
+  const want = ['click', 'cursor_position', 'drag', 'focus_window', 'get_clipboard', 'key_down', 'key_up', 'list_monitors', 'list_windows', 'mouse_down', 'mouse_up', 'move', 'press_keys', 'screenshot_screen', 'screenshot_window', 'scroll', 'set_clipboard', 'type_text', 'wait'];
   check('tool list', JSON.stringify(tools) === JSON.stringify(want), tools.join(','));
 
   const before = (await call(client, 'list_windows')).data;

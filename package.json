@@ -10,7 +10,8 @@
     "start": "node src/server.js",
     "test": "node test/unit.js",
     "smoke": "node test/smoke.js",
-    "chrome-test": "node test/chrome.js"
+    "chrome-test": "node test/chrome.js",
+    "instagram-test": "node test/instagram.js"
   },
   "license": "UNLICENSED",
   "private": true,

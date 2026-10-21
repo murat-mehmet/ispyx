@@ -1,5 +1,6 @@
 // "ctrl+shift+t" style chords -> Windows virtual-key codes.
 const NAMED = {
+  win: 0x5b, windows: 0x5b, meta: 0x5b, cmd: 0x5b, super: 0x5b, lwin: 0x5b, rwin: 0x5c,
   ctrl: 0x11, control: 0x11, shift: 0x10, alt: 0x12, menu: 0x12,
   enter: 0x0d, return: 0x0d, esc: 0x1b, escape: 0x1b, tab: 0x09, space: 0x20,
   backspace: 0x08, delete: 0x2e, del: 0x2e, insert: 0x2d, ins: 0x2d,
@@ -8,13 +9,11 @@ const NAMED = {
   ',': 0xbc, '.': 0xbe, '-': 0xbd, '=': 0xbb, '/': 0xbf, ';': 0xba, "'": 0xde,
   '[': 0xdb, ']': 0xdd, '\\': 0xdc, '`': 0xc0,
 };
-const FORBIDDEN = new Set(['win', 'windows', 'meta', 'cmd', 'super', 'lwin', 'rwin']);
 
 export function parseChord(chord) {
   const parts = chord.trim().toLowerCase().split('+').map((s) => s.trim()).filter(Boolean);
   if (!parts.length) throw new Error('Empty key chord.');
   return parts.map((p) => {
-    if (FORBIDDEN.has(p)) throw new Error('The Windows key is not allowed.');
     if (NAMED[p] !== undefined) return NAMED[p];
     if (/^f([1-9]|1\d|2[0-4])$/.test(p)) return 0x70 + Number(p.slice(1)) - 1;
     if (/^[a-z0-9]$/.test(p)) return p.toUpperCase().charCodeAt(0);

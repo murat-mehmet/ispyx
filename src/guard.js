@@ -9,7 +9,11 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export class ToolError extends Error {}
 
 const DEFAULTS = {
+  // global: true  -> act anywhere on the desktop (denylist still applies)
+  // global: false -> act only inside windows of the allowlisted programs
+  global: true,
   allowlist: ['chrome.exe', 'msedge.exe'],
+  denylist: ['keepass.exe', 'keepassxc.exe', '1password.exe', 'bitwarden.exe'],
   logPath: path.join(ROOT, 'logs', 'actions.jsonl'),
   killCornerPx: 2,
   maxTypeLength: 10000,
@@ -25,7 +29,14 @@ export function loadConfig(env = process.env) {
       throw new Error(`Config file ${file} is not valid JSON: ${e.message}`);
     }
   }
-  if (env.WIN_INPUT_ALLOWLIST) cfg.allowlist = env.WIN_INPUT_ALLOWLIST.split(',');
+  if (env.WIN_INPUT_ALLOWLIST) {
+    cfg.allowlist = env.WIN_INPUT_ALLOWLIST.split(',');
+    cfg.global = false; // naming an allowlist in the environment means "restrict to these"
+  }
+  if (env.WIN_INPUT_DENYLIST) cfg.denylist = env.WIN_INPUT_DENYLIST.split(',');
+  if (env.WIN_INPUT_GLOBAL) cfg.global = !/^(0|false|no)$/i.test(env.WIN_INPUT_GLOBAL);
+  cfg.global = !!cfg.global;
+  cfg.denylist = cfg.denylist.map((s) => String(s).trim().toLowerCase()).filter(Boolean);
   if (env.WIN_INPUT_LOG) cfg.logPath = env.WIN_INPUT_LOG;
   cfg.allowlist = cfg.allowlist.map((s) => String(s).trim().toLowerCase()).filter(Boolean);
   cfg.logPath = path.resolve(ROOT, cfg.logPath);
@@ -38,6 +49,9 @@ export class Guard {
     this.killed = false;
     this.lastWindow = 0;
     this.shots = new Map(); // hwnd -> scale of the last screenshot
+    this.lastShot = null; // { rect, scale } of the last global screenshot
+    this.heldKeys = new Set();
+    this.heldButtons = new Set();
     fs.mkdirSync(path.dirname(config.logPath), { recursive: true });
   }
 
@@ -57,7 +71,11 @@ export class Guard {
   checkKill() {
     if (!this.killed) {
       const p = w.cursorPos();
-      if (this.inCorner(p.x, p.y)) this.killed = true;
+      if (this.inCorner(p.x, p.y)) {
+        this.killed = true;
+        this.log({ tool: 'kill_switch', note: 'pointer entered the top-left corner' });
+        this.releaseAll();
+      }
     }
     if (this.killed) {
       throw new ToolError('Kill switch active: the mouse was moved into the top-left screen corner. All actions are refused until the server is restarted.');
@@ -68,14 +86,33 @@ export class Guard {
     if (w.isScreenLocked()) throw new ToolError('The screen is locked (or a secure prompt is showing), so no input can be sent or captured. Unlock it and try again.');
   }
 
+  denied(win) {
+    return !!win.process && this.config.denylist.includes(win.process);
+  }
+
   allowed(win) {
+    if (this.denied(win)) return false;
+    if (this.config.global) return true;
     return !!win.process && this.config.allowlist.includes(win.process);
+  }
+
+  /** Release anything this server still holds down (kill switch, shutdown, errors). */
+  releaseAll() {
+    try {
+      if (this.heldKeys.size) w.keysUp([...this.heldKeys]);
+      for (const b of this.heldButtons) w.mouseUp(b);
+    } catch { /* nothing more to do */ }
+    this.heldKeys.clear();
+    this.heldButtons.clear();
   }
 
   /** Throws a plain error unless the window may be acted on. */
   assertUsable(win, { needVisible = true } = {}) {
     if (!win.process) {
       throw new ToolError(`Cannot identify the program that owns "${win.title}"; it may be elevated. Refused.`);
+    }
+    if (this.denied(win)) {
+      throw new ToolError(`Refused: "${win.title}" belongs to ${win.process}, which is on the denylist.`);
     }
     if (!this.allowed(win)) {
       throw new ToolError(`Refused: "${win.title}" belongs to ${win.process}, which is not on the allowlist (${this.config.allowlist.join(', ')}).`);
@@ -120,6 +157,34 @@ export class Guard {
     return { sx, sy, rect, scale: s };
   }
 
+  /** Absolute / last-screenshot coordinates -> virtual-desktop pixels, with safety checks. */
+  toScreenGlobal(x, y, space) {
+    let sx = x;
+    let sy = y;
+    if (space === 'shot') {
+      if (!this.lastShot) throw new ToolError('No screenshot_screen taken yet, so there is nothing to map "shot" coordinates from.');
+      sx = this.lastShot.rect.left + x / this.lastShot.scale;
+      sy = this.lastShot.rect.top + y / this.lastShot.scale;
+    }
+    sx = Math.round(sx);
+    sy = Math.round(sy);
+    const v = w.virtualScreen();
+    if (sx < v.x || sy < v.y || sx >= v.x + v.width || sy >= v.y + v.height) {
+      throw new ToolError(`Point (${sx}, ${sy}) is outside the desktop (${v.x},${v.y} to ${v.x + v.width - 1},${v.y + v.height - 1}).`);
+    }
+    if (this.inCorner(sx, sy)) throw new ToolError('That point is inside the top-left kill-switch corner; refused.');
+    return { sx, sy };
+  }
+
+  /** Whatever window sits under a screen point must be usable (allow/deny lists, elevation). */
+  assertPointUsable(sx, sy) {
+    const top = w.rootWindowAt(sx, sy);
+    if (!top) return null;
+    const o = w.describeWindow(top);
+    this.assertUsable(o, { needVisible: false });
+    return o;
+  }
+
   /** The point must really belong to the target window, not to something covering it. */
   assertPointOwned(win, sx, sy) {
     const top = w.rootWindowAt(sx, sy);
@@ -130,7 +195,8 @@ export class Guard {
   }
 
   async focus(win) {
-    this.assertUsable(win, { needVisible: false });
+    if (this.denied(win)) this.assertUsable(win, { needVisible: false });
+    if (!this.config.global) this.assertUsable(win, { needVisible: false });
     const ok = await w.bringToForeground(win.hwnd);
     if (!ok) {
       throw new ToolError(`Windows refused to bring "${win.title}" to the front (foreground lock). Click the window yourself once, then retry.`);
