@@ -7,7 +7,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import * as w from './win32.js';
 import { Guard, ToolError, loadConfig, winSummary } from './guard.js';
-import { shrinkToPng } from './image.js';
+import { shrinkToPng, cropCapture } from './image.js';
 import { parseSequence, insertsContent } from './keys.js';
 import { curvedPath, ease, randomDuration, typingDelays } from './motion.js';
 import { Overlay } from './overlay.js';
@@ -228,22 +228,27 @@ server.registerTool('focus_window', {
 }));
 
 server.registerTool('screenshot_window', {
-  description: 'PNG of one window only (works for Chrome and GPU-rendered content). Returns the image plus `scale` and `rect`; with space "window", click/move/drag/scroll take coordinates in these screenshot pixels.',
-  inputSchema: { ...target, maxWidth: z.number().int().min(100).max(8000).default(1280).describe('Maximum image width in pixels.') },
+  description: 'PNG of one window only (works for Chrome and GPU-rendered content). Returns the image plus `scale` and `rect` (and the clamped `region` when one was given). With space "window", click/move/drag/scroll take coordinates in the pixels of the LAST screenshot_window of that hwnd, also when it was cropped: the server remembers the crop origin and scale per window, so a point in the cropped image maps back correctly. Optional `region` {x, y, width, height} crops inside the window (window pixels from its top-left, before maxWidth scaling; clamped to the window, error if fully outside); maxWidth then applies to the crop. Without `region` nothing changes.',
+  inputSchema: { ...target, region: z.object({ x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive() }).optional().describe('Crop inside the window, window pixels from its top-left.'), maxWidth: z.number().int().min(100).max(8000).default(1280).describe('Maximum image width in pixels.') },
 }, action('screenshot_window', async (args, entry) => {
   if (!args.hwnd && !args.title) throw new ToolError('Give hwnd or title, or use screenshot_screen for the whole desktop.');
   const win = guard.resolve(args);
   guard.assertUsable(win, { needVisible: false });
   entry.window = winSummary(win);
   if (win.minimized) throw new ToolError(`"${win.title}" is minimized and cannot be captured. Use focus_window first.`);
-  const cap = await overlay.hiddenDuring(() => w.captureWindow(win.hwnd));
+  let cap = await overlay.hiddenDuring(() => w.captureWindow(win.hwnd));
+  if (args.region) {
+    const cropped = cropCapture(cap, args.region);
+    if (!cropped) throw new ToolError(`Region is outside the window (the window is ${cap.width}x${cap.height} px, region starts at ${args.region.x},${args.region.y}).`);
+    cap = cropped;
+  }
   const img = shrinkToPng(cap, args.maxWidth ?? 1280);
-  guard.shots.set(win.hwnd, img.scale);
+  guard.shots.set(win.hwnd, { scale: img.scale, ox: cap.region?.x ?? 0, oy: cap.region?.y ?? 0 });
   guard.lastWindow = win.hwnd;
   return {
     content: [
       { type: 'image', data: img.png.toString('base64'), mimeType: 'image/png' },
-      { type: 'text', text: JSON.stringify({ hwnd: win.hwnd, scale: img.scale, rect: cap.rect, width: img.width, height: img.height, method: cap.method }) },
+      { type: 'text', text: JSON.stringify({ hwnd: win.hwnd, scale: img.scale, rect: cap.rect, ...(cap.region ? { region: cap.region } : {}), width: img.width, height: img.height, method: cap.method }) },
     ],
   };
 }));

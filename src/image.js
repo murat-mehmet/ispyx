@@ -74,6 +74,20 @@ export function toRgbaScaled(bgra, w, h, outW, outH) {
   return out;
 }
 
+/** Crop a capture to region {x,y,width,height} (window pixels), clamped to its bounds. Returns null if nothing is left. */
+export function cropCapture(cap, region) {
+  const x0 = Math.max(0, Math.round(region.x));
+  const y0 = Math.max(0, Math.round(region.y));
+  const x1 = Math.min(cap.width, Math.round(region.x + region.width));
+  const y1 = Math.min(cap.height, Math.round(region.y + region.height));
+  if (x1 <= x0 || y1 <= y0) return null;
+  const w = x1 - x0;
+  const h = y1 - y0;
+  const bits = Buffer.alloc(w * h * 4);
+  for (let y = 0; y < h; y++) cap.bits.copy(bits, y * w * 4, ((y0 + y) * cap.width + x0) * 4, ((y0 + y) * cap.width + x1) * 4);
+  return { ...cap, bits, width: w, height: h, region: { x: x0, y: y0, width: w, height: h } };
+}
+
 /** Capture result -> { png, width, height, scale } where scale = output pixels per screen pixel. */
 export function shrinkToPng(cap, maxWidth) {
   const outW = Math.max(1, Math.min(cap.width, Math.floor(maxWidth)));

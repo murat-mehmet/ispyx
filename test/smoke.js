@@ -131,6 +131,39 @@ try {
   r = await call(client, 'screenshot_window', { hwnd });
   fs.writeFileSync(path.join(OUT, 'notepad-dragged.png'), Buffer.from(r.image.data, 'base64'));
 
+  // 7b. cropped window screenshot: coordinates in the crop must map back to the right screen pixels
+  await call(client, 'press_keys', { hwnd, keys: 'ctrl+a' });
+  const R = { x: 0, y: 80, width: 300, height: 200 };
+  r = await call(client, 'screenshot_window', { hwnd, region: R, maxWidth: 150 });
+  const crop = r.data;
+  const cimg = decodePng(Buffer.from(r.image.data, 'base64'));
+  check('cropped screenshot has region, rect and scale', !r.isError && crop.region?.x === 0 && crop.region.y === 80 && crop.region.width === Math.min(300, crop.rect.width) && crop.region.height === 200 && Math.abs(crop.scale - cimg.width / crop.region.width) < 0.01, JSON.stringify(crop.region) + ' scale=' + crop.scale.toFixed(3) + ' img=' + cimg.width + 'x' + cimg.height);
+  let cx0 = 1e9, cx1 = -1, cy0 = 1e9, cy1 = -1;
+  for (let y = 0; y < cimg.height; y++) for (let x = 0; x < cimg.width; x++) {
+    const o = (y * cimg.width + x) * 4;
+    if (cimg.rgba[o + 2] - cimg.rgba[o] > 100) { cx0 = Math.min(cx0, x); cx1 = Math.max(cx1, x); cy0 = Math.min(cy0, y); cy1 = Math.max(cy1, y); }
+  }
+  check('selected text visible in the crop', cx1 > cx0 && cy1 > cy0, 'x ' + cx0 + '-' + cx1 + ', y ' + cy0 + '-' + cy1);
+  const cmy = Math.round((cy0 + cy1) / 2);
+  r = await call(client, 'move', { hwnd, x: cx0 + 4, y: cmy });
+  const cur2 = w.cursorPos();
+  const wx = Math.round(crop.rect.left + crop.region.x + (cx0 + 4) / crop.scale);
+  const wy = Math.round(crop.rect.top + crop.region.y + cmy / crop.scale);
+  check('move with cropped coordinates lands on the mapped pixel', !r.isError && Math.abs(cur2.x - wx) <= 1 && Math.abs(cur2.y - wy) <= 1, 'cursor ' + cur2.x + ',' + cur2.y + ' expected ' + wx + ',' + wy);
+  await call(client, 'click', { hwnd, x: cx1 + 12, y: cmy }); // collapse the selection, caret after the text
+  await call(client, 'set_clipboard', { text: 'sentinel' });
+  r = await call(client, 'drag', { hwnd, fromX: cx0 + 1, fromY: cmy, toX: Math.round(cx0 + (cx1 - cx0) * 0.55), toY: cmy, steps: 10 });
+  await call(client, 'press_keys', { hwnd, keys: 'ctrl+c' });
+  await sleep(300);
+  const part2 = clipboard();
+  check('drag using cropped coordinates selects a prefix of the text', !r.isError && part2.length >= 3 && part2.length < TEXT.length && TEXT.startsWith(part2), JSON.stringify(part2));
+  r = await call(client, 'screenshot_window', { hwnd, region: { x: 5000, y: 5000, width: 50, height: 50 } });
+  check('region fully outside the window gives a clear error', r.isError && /outside the window/.test(r.data), r.data);
+  r = await call(client, 'screenshot_window', { hwnd, region: { x: -50, y: -50, width: 100, height: 100 } });
+  check('region partly outside is clamped', !r.isError && r.data.region.x === 0 && r.data.region.width === 50, JSON.stringify(r.data.region));
+  r = await call(client, 'screenshot_window', { hwnd });
+  check('without region nothing changes (no region field, full size)', !r.isError && r.data.region === undefined && r.data.width === Math.min(1280, r.data.rect.width));
+
   // 8. refusals
   const explorer = (await call(client, 'list_windows')).data.windows.find((x) => x.process === 'explorer.exe');
   if (explorer) {

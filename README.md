@@ -93,7 +93,7 @@ The server runs per-monitor DPI aware (v2): screenshots, clicks and cursor readi
 | `list_windows` | Visible top-level windows including the taskbar (`Shell_TrayWnd`): hwnd, title, class, process, rect, allowed, elevated; `includeUntitled` for all. |
 | `list_monitors`, `cursor_position` | Monitor rectangles + virtual desktop bounds; pointer position. |
 | `focus_window` | Any window outside the denylist: restores if minimized, brings to front (AttachThreadInput and Alt-key workarounds for the foreground lock). |
-| `screenshot_window` | One window via `PrintWindow(PW_RENDERFULLCONTENT)`. Returns PNG + `scale` + `rect`. |
+| `screenshot_window` | One window via `PrintWindow(PW_RENDERFULLCONTENT)`. Returns PNG + `scale` + `rect`. Optional `region` {x, y, width, height} crops inside the window (window pixels from its top-left, before `maxWidth` scaling; clamped to the window, error if fully outside; `maxWidth` applies to the crop) and is echoed back clamped. **Mapping back:** the server remembers the crop origin and scale of the last `screenshot_window` per hwnd, so pointer tools with `space: "window"` and that hwnd take coordinates in the cropped image directly (no `region` on the pointer tools). A later uncropped shot resets it. |
 | `screenshot_screen` | One monitor (`monitor`), everything (`all: true`) or a `region` in desktop pixels. Returns `rect` + `scale`. |
 | `click` | left/right/middle, `double` or `clicks` up to 3, `modifiers` (`ctrl`, `shift`, `alt`, `win`) held during the click. |
 | `move`, `mouse_down`, `mouse_up`, `drag` | Pointer control. `drag` moves in steps (HTML5 drag-and-drop needs them) and takes `modifiers`. Held buttons are released on kill switch or shutdown. |

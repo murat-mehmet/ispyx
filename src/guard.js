@@ -62,7 +62,7 @@ export class Guard {
     this.killReason = '';
     this.overlay = null;
     this.lastWindow = 0;
-    this.shots = new Map(); // hwnd -> scale of the last screenshot
+    this.shots = new Map(); // hwnd -> { scale, ox, oy } of the last window screenshot (ox/oy: crop origin in window pixels)
     this.lastShot = null; // { rect, scale } of the last global screenshot
     this.heldKeys = new Set();
     this.heldButtons = new Set();
@@ -170,11 +170,12 @@ export class Guard {
   toScreen(win, x, y, { scale } = {}) {
     const rect = w.getRect(win.hwnd);
     if (!rect) throw new ToolError(`Cannot read the position of "${win.title}".`);
-    const s = scale || this.shots.get(win.hwnd) || 1;
-    const sx = Math.round(rect.left + x / s);
-    const sy = Math.round(rect.top + y / s);
+    const shot = this.shots.get(win.hwnd) || { scale: 1, ox: 0, oy: 0 };
+    const s = scale || shot.scale;
+    const sx = Math.round(rect.left + shot.ox + x / s);
+    const sy = Math.round(rect.top + shot.oy + y / s);
     if (sx < rect.left || sy < rect.top || sx >= rect.left + rect.width || sy >= rect.top + rect.height) {
-      throw new ToolError(`Point (${x}, ${y}) is outside "${win.title}" (screenshot size ${Math.round(rect.width * s)}x${Math.round(rect.height * s)}).`);
+      throw new ToolError(`Point (${x}, ${y}) is outside "${win.title}" (window is ${Math.round(rect.width)}x${Math.round(rect.height)} px).`);
     }
     if (this.inCorner(sx, sy)) throw new ToolError('That point is inside the top-left kill-switch corner; refused.');
     return { sx, sy, rect, scale: s };
