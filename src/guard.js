@@ -86,9 +86,15 @@ export class Guard {
     t.unref();
   }
 
-  inCorner(x, y) {
+  /** The kill corner is the top-left of the whole virtual desktop, which is negative with a monitor left of or above the primary. */
+  origin() {
+    const v = w.virtualScreen();
+    return { x: v.x, y: v.y };
+  }
+
+  inCorner(x, y, origin = this.origin()) {
     const n = this.config.killCornerPx;
-    return x <= n && y <= n;
+    return x - origin.x <= n && y - origin.y <= n;
   }
 
   /** Latch the kill switch: everything stops, held keys/buttons are released, later calls fail. */

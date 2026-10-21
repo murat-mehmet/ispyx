@@ -133,6 +133,7 @@ async function glide(p, args = {}) {
   const ms = args.durationMs ?? randomDuration(config.moveMinMs, config.moveMaxMs);
   const path = curvedPath(from, { x: p.sx, y: p.sy });
   const v = w.virtualScreen();
+  const org = { x: v.x, y: v.y };
   const keep = config.killCornerPx + 2;
   const t0 = performance.now();
   for (let n = 0; ; n++) {
@@ -141,8 +142,8 @@ async function glide(p, args = {}) {
     // a bend must never drag the pointer off the desktop or into the kill-switch corner
     const x = Math.min(v.x + v.width - 1, Math.max(v.x, Math.round(q.x)));
     const y = Math.min(v.y + v.height - 1, Math.max(v.y, Math.round(q.y)));
-    const hit = guard.inCorner(x, y);
-    w.mouseMoveTo(hit ? keep : x, hit ? keep : y);
+    const hit = guard.inCorner(x, y, org);
+    w.mouseMoveTo(hit ? org.x + keep : x, hit ? org.y + keep : y);
     if (t >= 1) break;
     if (n % 4 === 0) guard.checkKill();
     await w.sleep(8);
