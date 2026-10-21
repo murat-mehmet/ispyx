@@ -1,6 +1,6 @@
 // Optional password gate. Off by default (config `auth`). When on, the first tool call opens a password
-// window; a correct password unlocks the server for a duration the user picks (stored on disk, so a restart
-// or a second server does not ask again until it runs out). No answer within 30 s closes the window and
+// window; a correct password unlocks this server for a duration the user picks. The unlock is kept in memory
+// only, so every server start (every /mcp reconnect) asks again. No answer within 30 s closes the window and
 // the tool fails. Only a salted PBKDF2 hash is stored, never the password.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -53,6 +53,7 @@ export class Auth {
   constructor({ enabled, file = defaultAuthFile(), timeoutMs = 30000, prompt = showDialog, now = () => Date.now() }) {
     Object.assign(this, { enabled, file, timeoutMs, prompt, now });
     this.pending = null;
+    this.until = 0;
   }
 
   read() {
@@ -64,8 +65,9 @@ export class Auth {
     fs.writeFileSync(this.file, JSON.stringify(data, null, 2));
   }
 
+  /** The unlock lives in memory only: every server start (and every /mcp reconnect) asks again. */
   unlocked() {
-    return (this.read().unlockedUntil ?? 0) > this.now();
+    return this.until > this.now();
   }
 
   /** Resolves when the server is unlocked; throws a plain message otherwise. Parallel calls share one window. */
@@ -98,7 +100,8 @@ export class Auth {
         if (!crypto.timingSafeEqual(a, b)) { message = 'Wrong password.'; continue; }
       }
       const minutes = toMinutes(r.value, r.unit);
-      data.unlockedUntil = this.now() + minutes * 60000;
+      this.until = this.now() + minutes * 60000;
+      delete data.unlockedUntil; // older versions kept the unlock on disk
       if (r.makeDefault) data.defaultMinutes = minutes;
       this.write(data);
       return;

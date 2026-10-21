@@ -46,8 +46,7 @@ try {
   let r = await call(c, 'list_windows');
   check('first call opens the setup dialog and succeeds after it', !r.isError && (await ui) === 'submitted', r.text.slice(0, 60));
   const data = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-  const mins = (data.unlockedUntil - Date.now()) / 60000;
-  check('unlocked for the chosen 2 hours and saved as the default', mins > 118 && mins <= 120 && data.defaultMinutes === 120 && !JSON.stringify(data).includes('secret1'), `${mins.toFixed(1)} min`);
+  check('chosen 2 hours saved as the default; no password or unlock time on disk', data.defaultMinutes === 120 && !('unlockedUntil' in data) && !JSON.stringify(data).includes('secret1'));
 
   // 2. unlocked: no window
   const t0 = Date.now();
@@ -55,14 +54,7 @@ try {
   check('no dialog while unlocked', !r.isError && Date.now() - t0 < 3000 && !dialogOpen());
   await c.close();
 
-  // 3. a restarted server reads the unlock from the file
-  c = await launch();
-  r = await call(c, 'list_windows');
-  check('a restarted server stays unlocked', !r.isError && !dialogOpen());
-  await c.close();
-
-  // 4. expired: wrong password first, then the right one
-  fs.writeFileSync(FILE, JSON.stringify({ ...data, unlockedUntil: Date.now() - 1000 }));
+  // 3. a restarted server (e.g. /mcp reconnect) asks again; wrong password first, then the right one
   c = await launch();
   const p = call(c, 'list_windows');
   const wrong = await drive('-Password', 'wrong-one');
@@ -70,8 +62,7 @@ try {
   r = await p;
   check('wrong password keeps the dialog asking; right one unlocks', wrong === 'submitted' && (await right) === 'submitted' && !r.isError, r.text.slice(0, 60));
 
-  // 5. expired and ignored: the window closes by itself and the tool fails
-  fs.writeFileSync(FILE, JSON.stringify({ ...JSON.parse(fs.readFileSync(FILE, 'utf8')), unlockedUntil: Date.now() - 1000 }));
+  // 5. a new start and no answer: the window closes by itself and the tool fails
   await c.close();
   c = await launch(5000);
   const t1 = Date.now();

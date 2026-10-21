@@ -55,8 +55,8 @@ Other keys: `maxTypeLength` (default 10000).
 - **First time:** you choose a password (at least 6 characters, typed twice). Only a salted PBKDF2 hash is stored, in `%APPDATA%\win-input-mcp\auth.json` (not in the project).
 - **Every time it is locked:** enter the password and pick **how long to stay unlocked**: a number plus minutes / hours / days (default 24 hours, up to 365 days). Tick **"make this the new default"** to remember the choice. Wrong passwords are asked again in the same window.
 - **No answer in 30 seconds:** the window closes by itself and the tool returns a plain error ("Password was not entered ..."). The next call asks again.
-- **Unlocked:** no window, no questions, until the time runs out. The unlock time lives in `auth.json`, so a restart of the server, or a second server, does not ask again. Parallel tool calls share one window.
-- **Forgot the password / want to reset:** delete `%APPDATA%\win-input-mcp\auth.json`. To lock now, set `unlockedUntil` in it to 0 or delete it.
+- **Unlocked:** no window, no questions, until the time runs out. The unlock is kept **in memory only**: every server start, including every `/mcp` reconnect, asks again. Parallel tool calls share one window.
+- **Forgot the password / want to reset:** delete `%APPDATA%\win-input-mcp\auth.json` (the next start asks you to choose a new one).
 - `resume` (the stop-clearing tool) is not behind the gate.
 - `npm run auth-test` drives the real window (temp file only); the unit tests cover the logic.
 

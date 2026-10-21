@@ -50,13 +50,16 @@ check('ctrl+v counts as content insertion', insertsContent(parseSequence('ctrl+v
   check('first run asks to set a password (setup mode), retries short/mismatched ones', seen.length === 3 && seen.every((s) => s.mode === 'setup') && /6/.test(seen[1].message) && /do not match/.test(seen[2].message));
   const stored = fs.readFileSync(file, 'utf8');
   check('only a hash is stored, never the password', !stored.includes('abcdef') && JSON.parse(stored).hash.length === 64);
-  check('unlock lasts the chosen time', JSON.parse(stored).unlockedUntil === t + 120 * 60000 && JSON.parse(stored).defaultMinutes === 120, stored.slice(0, 0));
+  check('unlock lasts the chosen time (in memory, not on disk)', a.until === t + 120 * 60000 && JSON.parse(stored).defaultMinutes === 120 && !('unlockedUntil' in JSON.parse(stored)));
 
   seen.length = 0;
   await a.ensure();
-  await mk().ensure(); // another server instance reads the same file
-  check('no prompt while unlocked (also across instances)', seen.length === 0);
+  check('no prompt while unlocked', seen.length === 0);
+  answers.push({ password: 'abcdef', value: 1, unit: 'days' });
+  await mk().ensure(); // a new server start (e.g. /mcp reconnect) always asks again
+  check('a new instance asks again', seen.length === 1 && seen[0].mode === 'unlock');
 
+  seen.length = 0;
   t += 121 * 60000;
   answers.push({ password: 'nope', value: 1, unit: 'days' }, { password: 'abcdef', value: 10, unit: 'minutes' });
   await a.ensure();
