@@ -150,6 +150,38 @@ async function glide(p, args = {}) {
   w.mouseMoveTo(p.sx, p.sy);
 }
 
+/**
+ * Wheel like a hand on a smooth-scrolling mouse: the total is spread over many small wheel events
+ * (a fraction of a notch each) following the same smooth speed curve as the pointer glide, so pages
+ * scroll continuously instead of jumping. Duration: random 300-1000 ms, longer for big scrolls
+ * (or durationMs). `instant` sends the whole amount in one event.
+ */
+async function smoothWheel(vert, horiz, args) {
+  if (!humanMotion(args)) {
+    if (vert) w.mouseWheel(vert);
+    if (horiz) w.mouseHWheel(horiz);
+    return { events: 1, ms: 0 };
+  }
+  const big = Math.max(Math.abs(vert), Math.abs(horiz));
+  const ms = args.durationMs ?? Math.min(2500, randomDuration(config.moveMinMs, config.moveMaxMs) + Math.round(big * 40));
+  const totalV = Math.round(vert * 120);
+  const totalH = Math.round(horiz * 120);
+  let sentV = 0, sentH = 0, events = 0;
+  const t0 = performance.now();
+  for (let n = 0; ; n++) {
+    const t = Math.min(1, (performance.now() - t0) / ms);
+    const e = ease(t);
+    const dv = Math.round(totalV * e) - sentV;
+    const dh = Math.round(totalH * e) - sentH;
+    if (dv) { w.mouseWheel(dv / 120); sentV += dv; events++; }
+    if (dh) { w.mouseHWheel(dh / 120); sentH += dh; events++; }
+    if (t >= 1) break;
+    if (n % 4 === 0) guard.checkKill();
+    await w.sleep(8);
+  }
+  return { events, ms: Math.round(performance.now() - t0) };
+}
+
 /** Hold modifier keys for the duration of fn. */
 async function withModifiers(mods, fn) {
   const vks = (mods ?? []).map((m) => MOD_VK[m]);
@@ -364,7 +396,7 @@ server.registerTool('drag', {
 }));
 
 server.registerTool('scroll', {
-  description: 'Mouse wheel at a point. `amount`: vertical notches, positive up, negative down. `horizontal`: horizontal notches, positive right, negative left. Either or both.',
+  description: 'Smooth mouse wheel at a point (spread over 300-1000+ ms; instant: true for one jump). `amount`: vertical notches, positive up, negative down. `horizontal`: horizontal notches, positive right, negative left. Either or both.',
   inputSchema: { ...motion,
     ...target, space, ...xy,
     amount: z.number().min(-100).max(100).optional(),
@@ -379,11 +411,12 @@ server.registerTool('scroll', {
   await glide(p, args);
   await w.sleep(30);
   guard.checkKill();
+  let stats = { events: 1, ms: 0 };
   await withModifiers(args.modifiers, async () => {
-    if (args.amount) w.mouseWheel(args.amount);
-    if (args.horizontal) w.mouseHWheel(args.horizontal);
+    stats = await smoothWheel(args.amount ?? 0, args.horizontal ?? 0, args);
   });
-  return json({ ok: true, screen: { x: p.sx, y: p.sy } });
+  entry.events = stats.events;
+  return json({ ok: true, screen: { x: p.sx, y: p.sy }, wheelEvents: stats.events, ms: stats.ms });
 }));
 
 function assertNotPassword() {

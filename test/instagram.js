@@ -102,11 +102,19 @@ try {
   const probe = { x: mid.x - 40, y: mid.y - 40, width: 80, height: 80 };
   const p0 = await patch(client, probe);
   const scrollAt = (o) => call(client, 'scroll', { space: 'screen', x: mid.x, y: mid.y, ...o });
-  r = await scrollAt({ amount: -10 }); await sleep(900);
+  // sample the page while the wheel is still turning: a smooth scroll shows in-between positions
+  await call(client, 'move', { space: 'screen', x: mid.x, y: mid.y }); // arrive first, so sampling covers only the wheel
+  const scrolling = scrollAt({ amount: -10 });
+  const mids = [];
+  for (let i = 0; i < 5; i++) { await sleep(110); mids.push((await patch(client, probe)).g); }
+  r = await scrolling; await sleep(600);
   const pDown = await patch(client, probe);
   check('scroll down (global coords) changes the page', !r.isError && pDown.g > p0.g + 8, `G ${p0.g.toFixed(0)} -> ${pDown.g.toFixed(0)}`);
   r = await scrollAt({ amount: 10 }); await sleep(900);
   const pUp = await patch(client, probe);
+  const wheel = JSON.parse(r.data ? JSON.stringify(r.data) : '{}');
+  check('scroll is smooth: many small wheel events over 300+ ms', wheel.wheelEvents > 20 && wheel.ms >= 300, `${wheel.wheelEvents} events, ${wheel.ms} ms`);
+  check('page was seen at in-between positions while scrolling', mids.some((g) => g > p0.g + 6 && g < pDown.g - 6), 'G samples ' + mids.map((g) => g.toFixed(0)).join(', '));
   check('scroll up returns to the start', !r.isError && Math.abs(pUp.g - p0.g) < 8, `G ${pUp.g.toFixed(0)}`);
   r = await scrollAt({ horizontal: 10 }); await sleep(900);
   const pRight = await patch(client, probe);
