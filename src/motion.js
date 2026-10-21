@@ -30,3 +30,21 @@ export function curvedPath(from, to, rand = Math.random) {
 
 /** Random travel time in milliseconds, 300..1000 by default. */
 export const randomDuration = (min = 300, max = 1000, rand = Math.random) => Math.round(between(rand, min, max));
+
+/**
+ * Per-character pauses (ms) for human-paced typing: random between min and max, a little longer after
+ * spaces and punctuation, now and then a short "thinking" pause. If the total would exceed capMs the
+ * pauses are scaled down so long texts still finish (use the clipboard for really long text).
+ */
+export function typingDelays(text, { min = 60, max = 200, capMs = 60000 } = {}, rand = Math.random) {
+  const chars = [...text];
+  const d = chars.map((ch, i) => {
+    let ms = between(rand, min, max);
+    if (/[\s.,;:!?]/.test(ch)) ms *= between(rand, 1.2, 1.8);
+    if (i > 0 && rand() < 0.03) ms += between(rand, 250, 600);
+    return ms;
+  });
+  const total = d.reduce((a, b) => a + b, 0);
+  const k = total > capMs ? capMs / total : 1;
+  return d.map((ms) => Math.max(8, Math.round(ms * k)));
+}

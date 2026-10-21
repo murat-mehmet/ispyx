@@ -399,7 +399,8 @@ export const mouseHWheel = (notches) => send([mouseInput(0x1000, Math.round(notc
 // Notepad (and likely other XAML apps) mangle a single SendInput batch that mixes ASCII and non-ASCII
 // packets: the whole batch comes out as one repeated character. So each run of same-kind characters is
 // sent as its own batch with a short pause. Unicode packets do not depend on the keyboard layout.
-export async function typeUnicode(text, check) {
+export async function typeUnicode(text, check, delays) {
+  if (delays) return typeHuman(text, check, delays);
   const runs = [];
   for (const ch of text) {
     if (ch === String.fromCharCode(13)) continue;
@@ -425,6 +426,26 @@ export async function typeUnicode(text, check) {
       send(inputs.slice(i, i + 200));
     }
     if (r < runs.length - 1) await sleep(30);
+  }
+}
+
+/** One character at a time with a pause after each (delays[i] ms), like a person typing. */
+async function typeHuman(text, check, delays) {
+  let i = 0;
+  for (const ch of text) {
+    if (ch === String.fromCharCode(13)) { i++; continue; }
+    check?.();
+    const inputs = [];
+    if (ch === String.fromCharCode(10)) {
+      inputs.push(keyInput(0x0d, 0, 0), keyInput(0x0d, 0, 2));
+    } else {
+      for (let k = 0; k < ch.length; k++) {
+        const unit = ch.charCodeAt(k);
+        inputs.push(keyInput(0, unit, 0x4), keyInput(0, unit, 0x4 | 0x2));
+      }
+    }
+    send(inputs);
+    await sleep(delays[i++] ?? 0);
   }
 }
 

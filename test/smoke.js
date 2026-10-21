@@ -77,6 +77,7 @@ try {
   // 2. type Turkish text
   r = await call(client, 'type_text', { hwnd, text: TEXT });
   check('type_text', !r.isError, r.isError ? r.data : 'layout ' + r.data.keyboardLayout);
+  check('typing is human-paced (13 chars take well over 0.5 s)', !r.isError && r.data.humanPace === true && r.data.ms > 500 && r.data.ms < 6000, `${r.data.ms} ms`);
   await sleep(300);
 
   // 3. select all, copy, compare with what was typed

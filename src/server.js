@@ -9,7 +9,7 @@ import * as w from './win32.js';
 import { Guard, ToolError, loadConfig, winSummary } from './guard.js';
 import { shrinkToPng } from './image.js';
 import { parseSequence, insertsContent } from './keys.js';
-import { curvedPath, ease, randomDuration } from './motion.js';
+import { curvedPath, ease, randomDuration, typingDelays } from './motion.js';
 import { Overlay } from './overlay.js';
 import { installStopHotkey } from './hotkey.js';
 
@@ -445,8 +445,8 @@ async function keyboardTarget(args, entry) {
 }
 
 server.registerTool('type_text', {
-  description: 'Type text into the focused control using Unicode key events (Turkish and other non-ASCII characters work). Refused when the focused control is a password field. Pass hwnd/title to focus a window first; otherwise the current foreground window gets the text.',
-  inputSchema: { ...target, text: z.string().min(1) },
+  description: 'Type text into the focused control using Unicode key events, one character at a time at a human pace (random 60-200 ms per character, `instant: true` for all at once; very long text is sped up to finish within 60 s, use set_clipboard + ctrl+v for bulk text) (Turkish and other non-ASCII characters work). Refused when the focused control is a password field. Pass hwnd/title to focus a window first; otherwise the current foreground window gets the text.',
+  inputSchema: { ...target, text: z.string().min(1), instant: z.boolean().optional().describe('Type everything at once instead of at a human pace.') },
 }, action('type_text', async (args, entry) => {
   if (args.text.length > config.maxTypeLength) throw new ToolError(`Text is longer than ${config.maxTypeLength} characters. Use set_clipboard and ctrl+v for long text.`);
   await keyboardTarget(args, entry);
@@ -458,8 +458,11 @@ server.registerTool('type_text', {
     throw e;
   }
   guard.checkKill();
-  await w.typeUnicode(args.text, () => guard.checkKill());
-  return json({ ok: true, typed: args.text.length, keyboardLayout: '0x' + w.foregroundLayout().toString(16) });
+  const human = config.humanTyping && !args.instant;
+  const delays = human ? typingDelays(args.text, { min: config.typeMinMs, max: config.typeMaxMs, capMs: config.typeCapMs }) : undefined;
+  const t0 = performance.now();
+  await w.typeUnicode(args.text, () => guard.checkKill(), delays);
+  return json({ ok: true, typed: args.text.length, ms: Math.round(performance.now() - t0), humanPace: human, keyboardLayout: '0x' + w.foregroundLayout().toString(16) });
 }));
 
 function parseKeys(keys) {

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import * as w from '../src/win32.js';
-import { curvedPath, ease, randomDuration } from '../src/motion.js';
+import { curvedPath, ease, randomDuration, typingDelays } from '../src/motion.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 w.init();
@@ -29,6 +29,13 @@ const check = (name, ok, detail = '') => {
   check('ease is smooth (slow start, fast middle, slow end)', ease(0.1) < 0.02 && Math.abs(ease(0.5) - 0.5) < 1e-9 && ease(0.9) > 0.98);
   const ds = Array.from({ length: 200 }, () => randomDuration());
   check('random durations stay within 300-1000 ms and vary', Math.min(...ds) >= 300 && Math.max(...ds) <= 1000 && new Set(ds).size > 50, `${Math.min(...ds)}-${Math.max(...ds)}`);
+}
+
+{
+  const d = typingDelays('Merhaba dunya, nasilsin?');
+  check('typing delays are random within 60-200 ms (longer after spaces/punctuation)', d.length === 24 && new Set(d).size > 12 && d.every((x) => x >= 60 && x <= 200 * 1.8 + 600), `${Math.min(...d)}-${Math.max(...d)} ms`);
+  const long = typingDelays('x'.repeat(2000), { capMs: 60000 });
+  check('long text is sped up to fit the cap', long.reduce((a, b) => a + b, 0) <= 60500);
 }
 
 // live: through the real server

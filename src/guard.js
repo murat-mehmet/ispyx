@@ -19,6 +19,10 @@ const DEFAULTS = {
   killCornerPx: 2,
   overlay: true, // banner on screen while a tool runs
   humanMotion: true, // pointer glides along a curve instead of jumping
+  humanTyping: true, // type one character at a time at a human pace
+  typeMinMs: 60,
+  typeMaxMs: 200,
+  typeCapMs: 60000, // longer texts are sped up to finish within this
   moveMinMs: 300,
   moveMaxMs: 1000,
   maxTypeLength: 10000,
@@ -41,6 +45,7 @@ export function loadConfig(env = process.env) {
   if (env.WIN_INPUT_DENYLIST) cfg.denylist = env.WIN_INPUT_DENYLIST.split(',');
   if (env.WIN_INPUT_GLOBAL) cfg.global = !/^(0|false|no)$/i.test(env.WIN_INPUT_GLOBAL);
   cfg.global = !!cfg.global;
+  if (env.WIN_INPUT_HUMAN_TYPING) cfg.humanTyping = !/^(0|false|no)$/i.test(env.WIN_INPUT_HUMAN_TYPING);
   if (env.WIN_INPUT_OVERLAY) cfg.overlay = !/^(0|false|no)$/i.test(env.WIN_INPUT_OVERLAY);
   if (env.WIN_INPUT_HUMAN_MOTION) cfg.humanMotion = !/^(0|false|no)$/i.test(env.WIN_INPUT_HUMAN_MOTION);
   cfg.denylist = cfg.denylist.map((s) => String(s).trim().toLowerCase()).filter(Boolean);
