@@ -54,11 +54,11 @@ Settings, later wins:
 2. A config file elsewhere, via env `WIN_INPUT_MCP_CONFIG=<path>`
 3. Env: `WIN_INPUT_GLOBAL=0|1`, `WIN_INPUT_ALLOWLIST=chrome.exe,msedge.exe` (naming an allowlist this way also switches to restricted mode unless `WIN_INPUT_GLOBAL` says otherwise), `WIN_INPUT_DENYLIST=a.exe,b.exe`, `WIN_INPUT_LOG=<path>`
 
-Other keys: `killCornerPx` (default 2), `maxTypeLength` (default 10000).
+Other keys: `maxTypeLength` (default 10000).
 
 ## Human-like pointer motion
 
-By default the pointer **glides** to every target (`click`, `move`, `mouse_down`/`mouse_up`, `scroll`, and the travel part of `drag`): a gently curved path (cubic Bezier, random bend side and size) with a smooth minimum-jerk speed profile (slow start, fast middle, soft landing), taking a **random 300-1000 ms**, updated about every 8 ms. It always lands exactly on the target. The path is kept off the desktop edge and out of the kill-switch corner, and the kill switch is checked while moving.
+By default the pointer **glides** to every target (`click`, `move`, `mouse_down`/`mouse_up`, `scroll`, and the travel part of `drag`): a gently curved path (cubic Bezier, random bend side and size) with a smooth minimum-jerk speed profile (slow start, fast middle, soft landing), taking a **random 300-1000 ms**, updated about every 8 ms. It always lands exactly on the target. The path is kept on the desktop, and the stop key is checked while moving.
 
 - Typing is human-paced too: `type_text` sends one character at a time, pausing a random 60-200 ms after each (longer after spaces and punctuation, now and then a short thinking pause). Texts that would take over 60 s are sped up to fit; use `set_clipboard` + `ctrl+v` for bulk text. `instant: true` types everything at once. Config: `humanTyping`, `typeMinMs`, `typeMaxMs`, `typeCapMs`; env `WIN_INPUT_HUMAN_TYPING=0` turns it off.
 - Scrolling is smoothed the same way: the amount is spread over ~80-120 small wheel events along the same speed curve, so pages scroll continuously.
@@ -69,12 +69,12 @@ By default the pointer **glides** to every target (`click`, `move`, `mouse_down`
 ## Running banner and emergency stop
 
 - **Banner:** while a tool runs, a small dark banner (`win-input-mcp çalışıyor: <tool>   |   Durdurmak için Alt+Esc`) shows at the top centre of the primary monitor and hides 1.5 s after the last tool call. It is click-through (WS_EX_TRANSPARENT, `WM_NCHITTEST` returns transparent, never takes focus), so it catches no click and does not count as a window under the pointer. It stays visible in screen recordings, but is hidden for a moment while the agent takes a screenshot so it never covers what the agent needs to see. Turn it off with config `overlay: false` or `WIN_INPUT_OVERLAY=0`.
-- **Alt+Esc** (pressed by you) stops everything at once: the running tool returns an error saying `STOPPED BY THE USER ... Stop all work now and do not retry`, held keys and buttons are released, the banner turns red, and every later call fails with the same message until the server is restarted. Alt+Esc is caught by a low-level keyboard hook that swallows the Esc, so Windows does not also cycle windows (an Alt tap may still focus the menu bar of the active window). Keys injected by this server never trigger it; a polling fallback covers moments when the hook is not serviced. The top-left corner kill switch stops the same way.
+- **Alt+Esc** (pressed by you) stops everything at once: the running tool returns an error saying `STOPPED BY THE USER ... Stop all work now and do not retry`, held keys and buttons are released, the banner turns red, and every later call fails with the same message until the user says to continue and the agent calls the `resume` tool (or the server is restarted). Alt+Esc is caught by a low-level keyboard hook that swallows the Esc, so Windows does not also cycle windows (an Alt tap may still focus the menu bar of the active window). Keys injected by this server never trigger it; a polling fallback covers moments when the hook is not serviced. There is no mouse-corner switch.
 - Why not Ctrl+Esc: Windows opens the Start menu on it before an app can react.
 
 ## Testing safely next to other servers
 
-The corner watcher and the stop chord read global state (pointer position, keyboard), so a test that moves the pointer to (0,0) or presses Alt+Esc would stop every other win-input server on the machine. Tests therefore use test-only settings on their own server: `WIN_INPUT_KILL_CORNER_PX` (the smoke test uses 500 and moves the pointer to (300,300)) and `WIN_INPUT_STOP_CHORD` (the stop test uses `alt+f24`). The real defaults (2 px corner, Alt+Esc with its swallowing hook) are unchanged. The hook is only installed for the default chord.
+The stop chord reads global keyboard state, so a test that presses Alt+Esc would stop every other win-input server on the machine. The stop test therefore sets `WIN_INPUT_STOP_CHORD=alt+f24` on its own server and presses that. The real default (Alt+Esc with its swallowing hook) is unchanged; the hook is only installed for the default chord.
 
 ## Action log
 
@@ -105,14 +105,15 @@ The server runs per-monitor DPI aware (v2): screenshots, clicks and cursor readi
 | `type_text` | Unicode key events (Turkish and other non-ASCII). Refused in password fields. Goes to the foreground window, or to `hwnd`/`title` after focusing it. |
 | `press_keys` | Chords such as `ctrl+v`, `alt+tab`, `win+r`, `win+d`, `f5`; several separated by spaces. Windows key allowed. |
 | `key_down`, `key_up` | Hold and release keys (e.g. shift for a multi-select). Released automatically on kill switch or shutdown. |
-| `wait` | Pause up to 60 s (kill switch checked while waiting). |
+| `wait` | Pause up to 60 s (stop key checked while waiting). |
+| `resume` | Clear an Alt+Esc stop. Call it only after the user said to continue. |
 | `set_clipboard`, `get_clipboard` | Write text / image / file; read text (reports whether an image or files are present). |
 
 Typical flow: `screenshot_screen` → read coordinates off the image → `click` (`space: "shot"`) / `type_text` → `screenshot_screen` to check.
 
 ## Safety
 
-- **Kill switch:** move the mouse into the top-left screen corner. Every action is refused until the server restarts; held keys and buttons are released. A background watcher catches quick flicks between actions. Points inside the corner are never clicked.
+- **Emergency stop:** Alt+Esc is the only stop (there is no mouse-corner switch). Every action is refused and held keys and buttons are released, until the user tells the agent to continue and it calls `resume` (or the server restarts).
 - **Password fields:** `type_text` (and paste chords) are refused when the focused control is a password field (Win32 `ES_PASSWORD` and UI Automation `IsPassword`, which covers browser fields). If the check cannot run, the action is refused.
 - **No credentials:** the server never reads, stores or types saved passwords, and drives no password manager (default denylist). Log in yourself.
 - **Plain errors** for: foreground lock refused, window minimized / not capturable, elevated target (UIPI), locked screen, kill switch, denied or not allowlisted.

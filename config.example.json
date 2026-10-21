@@ -11,7 +11,6 @@
     "bitwarden.exe"
   ],
   "logPath": "logs/actions.jsonl",
-  "killCornerPx": 2,
   "maxTypeLength": 10000,
   "humanMotion": true,
   "moveMinMs": 300,

@@ -26,19 +26,6 @@ check('parse two chords', parseSequence('ctrl+a ctrl+c').length === 2);
 check('win key parses', parseSequence('win+r')[0][0] === 0x5b);
 check('ctrl+v counts as content insertion', insertsContent(parseSequence('ctrl+v')[0]) && !insertsContent(parseSequence('ctrl+a')[0]));
 
-// kill corner: top-left of the whole virtual desktop (pure arithmetic, the pointer is never moved)
-{
-  const { Guard } = await import('../src/guard.js');
-  const g = Object.create(Guard.prototype);
-  g.config = { killCornerPx: 2 };
-  const o = { x: -1920, y: 0 }; // monitor left of the primary
-  check('corner: negative x on the top row is not the corner', !g.inCorner(-1000, 1, o) && !g.inCorner(-1900, 0, o));
-  check('corner: virtual top-left is the corner', g.inCorner(-1920, 0, o) && g.inCorner(-1918, 2, o));
-  check('corner: primary (0,0) is not the corner when a monitor is on the left', !g.inCorner(0, 0, o));
-  check('corner: single monitor (0,0) is the corner', g.inCorner(0, 0, { x: 0, y: 0 }) && !g.inCorner(3, 0, { x: 0, y: 0 }));
-  check('corner: monitor above the primary', !g.inCorner(100, -500, { x: 0, y: -1080 }) && g.inCorner(0, -1080, { x: 0, y: -1080 }));
-}
-
 // password detection against our own Edit controls
 const user32 = koffi.load('user32.dll');
 const CreateWindowExW = user32.func('intptr_t CreateWindowExW(uint32, str16, str16, uint32, int, int, int, int, intptr_t, intptr_t, intptr_t, intptr_t)');

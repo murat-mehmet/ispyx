@@ -69,7 +69,13 @@ try {
   const after = await call('list_windows');
   check('later calls are refused', after.isError && /STOPPED BY THE USER/.test(after.text));
   const click = await call('click', { space: 'screen', x: 800, y: 500 });
-  check('click is refused too', click.isError);
+  check('click is refused too', click.isError && !/corner/i.test(click.text) && /resume/.test(click.text));
+  const rs = await call('resume');
+  check('resume clears the stop', !rs.isError && /"resumed":true/.test(rs.text), rs.text);
+  const ok = await call('list_windows');
+  check('tools work again after resume', !ok.isError, ok.text.slice(0, 80));
+  const rs2 = await call('resume');
+  check('resume with no stop active is harmless', !rs2.isError && /"resumed":false/.test(rs2.text));
 } catch (e) {
   check('stop test ran to completion', false, e.message);
 } finally {

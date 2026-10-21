@@ -49,7 +49,7 @@ const client = await launch();
 let hwnd = 0;
 try {
   const tools = (await client.listTools()).tools.map((t) => t.name).sort();
-  const want = ['click', 'cursor_position', 'drag', 'focus_window', 'get_clipboard', 'key_down', 'key_up', 'list_monitors', 'list_windows', 'mouse_down', 'mouse_up', 'move', 'press_keys', 'screenshot_screen', 'screenshot_window', 'scroll', 'set_clipboard', 'type_text', 'wait'];
+  const want = ['click', 'cursor_position', 'drag', 'focus_window', 'get_clipboard', 'key_down', 'key_up', 'list_monitors', 'list_windows', 'mouse_down', 'mouse_up', 'move', 'press_keys', 'resume', 'screenshot_screen', 'screenshot_window', 'scroll', 'set_clipboard', 'type_text', 'wait'];
   check('tool list', JSON.stringify(tools) === JSON.stringify(want), tools.join(','));
 
   const before = (await call(client, 'list_windows')).data;
@@ -195,21 +195,7 @@ try {
   await client.close();
 }
 
-// kill switch needs its own server instance, because it stays tripped until restart
-{
-  // The test server gets a huge corner (500 px) so the pointer can go to (300,300): moving the real
-  // pointer to (0,0) would trip every other win-input server running on this machine.
-  const c2 = await launch({ WIN_INPUT_KILL_CORNER_PX: '500' });
-  w._raw.SetCursorPos(300, 300);
-  await sleep(150);
-  const r = await call(c2, 'list_windows');
-  check('kill switch refuses after pointer in top-left corner', r.isError && /STOPPED BY THE USER/.test(r.data), r.data);
-  w._raw.SetCursorPos(700, 500);
-  const r2 = await call(c2, 'list_windows');
-  check('kill switch stays latched until restart', r2.isError);
-  await c2.close();
-}
-
+// the emergency stop (and resume) is covered by stop-test, on its own chord
 const logLines = fs.existsSync(LOG) ? fs.readFileSync(LOG, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
 check('action log written', logLines.some((l) => l.tool === 'type_text' && l.args.text === TEXT), `${logLines.length} lines at ${LOG}`);
 

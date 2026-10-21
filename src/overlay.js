@@ -148,6 +148,14 @@ export class Overlay {
     this.timer.unref();
   }
 
+  /** The stop was cleared (resume tool): back to normal. */
+  resume() {
+    this.stopped = false;
+    this.active = 0;
+    clearTimeout(this.timer);
+    this._hide();
+  }
+
   /** Hide the banner while the agent takes a screenshot, so it never covers what the agent needs to see. */
   async hiddenDuring(fn) {
     const visible = this.hwnd && this.enabled && w._raw.IsWindowVisible(this.hwnd);

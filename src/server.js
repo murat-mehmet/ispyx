@@ -133,17 +133,14 @@ async function glide(p, args = {}) {
   const ms = args.durationMs ?? randomDuration(config.moveMinMs, config.moveMaxMs);
   const path = curvedPath(from, { x: p.sx, y: p.sy });
   const v = w.virtualScreen();
-  const org = { x: v.x, y: v.y };
-  const keep = config.killCornerPx + 2;
   const t0 = performance.now();
   for (let n = 0; ; n++) {
     const t = Math.min(1, (performance.now() - t0) / ms);
     const q = path(ease(t));
-    // a bend must never drag the pointer off the desktop or into the kill-switch corner
+    // a bend must never drag the pointer off the desktop
     const x = Math.min(v.x + v.width - 1, Math.max(v.x, Math.round(q.x)));
     const y = Math.min(v.y + v.height - 1, Math.max(v.y, Math.round(q.y)));
-    const hit = guard.inCorner(x, y, org);
-    w.mouseMoveTo(hit ? org.x + keep : x, hit ? org.y + keep : y);
+    w.mouseMoveTo(x, y);
     if (t >= 1) break;
     if (n % 4 === 0) guard.checkKill();
     await w.sleep(8);
@@ -514,6 +511,17 @@ server.registerTool('key_up', {
   vks.forEach((k) => guard.heldKeys.delete(k));
   return json({ ok: true, held: guard.heldKeys.size });
 }));
+
+server.registerTool('resume', {
+  description: 'Clear an emergency stop (the user pressed Alt+Esc). Call it ONLY after the user has told you to continue; until then every other tool refuses. Does nothing if no stop is active.',
+}, async () => {
+  try {
+    const cleared = guard.resume();
+    return json({ ok: true, resumed: cleared });
+  } catch (e) {
+    return { isError: true, content: [{ type: 'text', text: e.message }] };
+  }
+});
 
 server.registerTool('wait', {
   description: 'Pause (milliseconds, up to 60000), for page loads and animations. The kill switch is checked while waiting.',

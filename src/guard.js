@@ -17,7 +17,6 @@ const DEFAULTS = {
   allowlist: ['chrome.exe', 'msedge.exe'],
   denylist: ['keepass.exe', 'keepassxc.exe', '1password.exe', 'bitwarden.exe'],
   logPath: path.join(ROOT, 'logs', 'actions.jsonl'),
-  killCornerPx: 2,
   stopChord: 'alt+esc', // emergency stop keys (env WIN_INPUT_STOP_CHORD, meant for tests)
   overlay: true, // banner on screen while a tool runs
   humanMotion: true, // pointer glides along a curve instead of jumping
@@ -47,9 +46,8 @@ export function loadConfig(env = process.env) {
   if (env.WIN_INPUT_DENYLIST) cfg.denylist = env.WIN_INPUT_DENYLIST.split(',');
   if (env.WIN_INPUT_GLOBAL) cfg.global = !/^(0|false|no)$/i.test(env.WIN_INPUT_GLOBAL);
   cfg.global = !!cfg.global;
-  // test-only knobs: let a test server use a different corner size / stop chord, so tests never have to
-  // move the real pointer to (0,0) or press Alt+Esc, which would also trip every other running server
-  if (env.WIN_INPUT_KILL_CORNER_PX) cfg.killCornerPx = Number(env.WIN_INPUT_KILL_CORNER_PX);
+  // test-only knob: lets a test server use its own stop chord, so tests never press Alt+Esc,
+  // which would also stop every other running server
   if (env.WIN_INPUT_STOP_CHORD) cfg.stopChord = env.WIN_INPUT_STOP_CHORD;
   if (env.WIN_INPUT_HUMAN_TYPING) cfg.humanTyping = !/^(0|false|no)$/i.test(env.WIN_INPUT_HUMAN_TYPING);
   if (env.WIN_INPUT_OVERLAY) cfg.overlay = !/^(0|false|no)$/i.test(env.WIN_INPUT_OVERLAY);
@@ -78,7 +76,7 @@ export class Guard {
     fs.mkdirSync(path.dirname(config.logPath), { recursive: true });
   }
 
-  /** Watch the pointer so a quick flick into the corner between two actions is not missed. */
+  /** Poll the stop chord, as a fallback for moments when the keyboard hook is not serviced. */
   startWatching() {
     const t = setInterval(() => {
       try { this.checkKill(); } catch { /* latched */ }
@@ -86,18 +84,7 @@ export class Guard {
     t.unref();
   }
 
-  /** The kill corner is the top-left of the whole virtual desktop, which is negative with a monitor left of or above the primary. */
-  origin() {
-    const v = w.virtualScreen();
-    return { x: v.x, y: v.y };
-  }
-
-  inCorner(x, y, origin = this.origin()) {
-    const n = this.config.killCornerPx;
-    return x - origin.x <= n && y - origin.y <= n;
-  }
-
-  /** Latch the kill switch: everything stops, held keys/buttons are released, later calls fail. */
+  /** Latch the stop: everything stops, held keys/buttons are released, later calls fail until resume. */
   trigger(reason) {
     if (this.killed) return;
     this.killed = true;
@@ -107,16 +94,22 @@ export class Guard {
     this.overlay?.stop(reason);
   }
 
+  /** Clear a stop (the resume tool). Refused while the stop keys are still held, which would stop again at once. */
+  resume() {
+    if (!this.killed) return false;
+    if (chordDown(this.stopVks)) throw new ToolError(`${this.stopLabel} is still held down; release it, then call resume again.`);
+    this.killed = false;
+    this.killReason = '';
+    this.overlay?.resume();
+    this.log({ tool: 'kill_switch', note: 'resumed' });
+    return true;
+  }
+
   checkKill() {
-    if (!this.killed) {
-      const p = w.cursorPos();
-      if (this.inCorner(p.x, p.y)) this.trigger('mouse in top-left corner');
-      else if (!this.heldKeys.has(this.stopVks[this.stopVks.length - 1]) && chordDown(this.stopVks)) this.trigger(this.stopLabel);
-    }
+    if (!this.killed && !this.heldKeys.has(this.stopVks[this.stopVks.length - 1]) && chordDown(this.stopVks)) this.trigger(this.stopLabel);
     if (this.killed) {
-      throw new ToolError(this.killReason === this.stopLabel
-        ? `STOPPED BY THE USER (${this.stopLabel}). Stop all work now and do not retry; tell the user you were stopped. Every action is refused until the server is restarted.`
-        : 'STOPPED BY THE USER (mouse moved into the top-left screen corner). Stop all work now and do not retry; tell the user you were stopped. Every action is refused until the server is restarted.');
+      throw new ToolError(`STOPPED BY THE USER (${this.stopLabel}). Stop all work now and do not retry; tell the user you were stopped. ` +
+        'Every action is refused until the user tells you to continue and you call the resume tool (or the server is restarted).');
     }
   }
 
@@ -192,7 +185,6 @@ export class Guard {
     if (sx < rect.left || sy < rect.top || sx >= rect.left + rect.width || sy >= rect.top + rect.height) {
       throw new ToolError(`Point (${x}, ${y}) is outside "${win.title}" (window is ${Math.round(rect.width)}x${Math.round(rect.height)} px).`);
     }
-    if (this.inCorner(sx, sy)) throw new ToolError('That point is inside the top-left kill-switch corner; refused.');
     return { sx, sy, rect, scale: s };
   }
 
@@ -211,7 +203,6 @@ export class Guard {
     if (sx < v.x || sy < v.y || sx >= v.x + v.width || sy >= v.y + v.height) {
       throw new ToolError(`Point (${sx}, ${sy}) is outside the desktop (${v.x},${v.y} to ${v.x + v.width - 1},${v.y + v.height - 1}).`);
     }
-    if (this.inCorner(sx, sy)) throw new ToolError('That point is inside the top-left kill-switch corner; refused.');
     return { sx, sy };
   }
 
