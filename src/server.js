@@ -24,7 +24,7 @@ const config = loadConfig();
 const guard = new Guard(config);
 const overlay = new Overlay({ enabled: config.overlay, stopLabel: guard.stopLabel });
 guard.overlay = overlay;
-const auth = new Auth({ enabled: config.auth, timeoutMs: config.authTimeoutMs, ...(config.authFile ? { file: config.authFile } : {}) });
+const auth = new Auth({ enabled: config.auth,...(config.authFile ? { file: config.authFile } : {}) });
 guard.startWatching();
 if (guard.stopIsDefault) installStopHotkey((reason) => guard.trigger(reason)); // the hook is Alt+Esc only
 

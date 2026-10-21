@@ -53,8 +53,8 @@ Other keys: `maxTypeLength` (default 10000).
 `auth` is **false** by default. Set `"auth": true` (or `WIN_INPUT_AUTH=1`) and the first tool call opens a small password window (always on top):
 
 - **First time:** you choose a password (at least 6 characters, typed twice). Only a salted PBKDF2 hash is stored, in `%APPDATA%\win-input-mcp\auth.json` (not in the project).
-- **Every time it is locked:** enter the password and pick **how long to stay unlocked**: a number plus minutes / hours / days (default 24 hours, up to 365 days). Tick **"make this the new default"** to remember the choice. Wrong passwords are asked again in the same window.
-- **No answer in 30 seconds:** the window closes by itself and the tool returns a plain error ("Password was not entered ..."). The next call asks again.
+- **Every time it is locked:** enter the password and pick **how long to stay unlocked**: a number plus minutes / hours / days (default 24 hours, up to 365 days). Tick **"make this the new default"** to remember the choice. A wrong password reopens the window (your picked duration kept) without answering the tool, up to 3 tries; the third wrong one returns an error.
+- **No answer in 30 seconds (fixed; each window gets its own 30 s):** the window closes by itself and the tool returns a plain error ("Password was not entered ..."). The next call asks again.
 - **Unlocked:** no window, no questions, until the time runs out. The unlock is kept **in memory only**: every server start, including every `/mcp` reconnect, asks again. Parallel tool calls share one window.
 - **Forgot the password / want to reset:** delete `%APPDATA%\win-input-mcp\auth.json` (the next start asks you to choose a new one).
 - `resume` (the stop-clearing tool) is not behind the gate.

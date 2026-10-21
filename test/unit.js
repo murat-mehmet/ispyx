@@ -63,7 +63,7 @@ check('ctrl+v counts as content insertion', insertsContent(parseSequence('ctrl+v
   t += 121 * 60000;
   answers.push({ password: 'nope', value: 1, unit: 'days' }, { password: 'abcdef', value: 10, unit: 'minutes' });
   await a.ensure();
-  check('after expiry asks again (unlock mode), wrong password retried, default duration offered', seen.length === 2 && seen[0].mode === 'unlock' && /Wrong password/.test(seen[1].message) && seen[0].value === 2 && seen[0].unit === 'hours');
+  check('after expiry asks again (unlock mode), wrong password retried, default duration offered', seen.length === 2 && seen[0].mode === 'unlock' && /Wrong password/.test(seen[1].message) && seen[0].value === 2 && seen[0].unit === 'hours' && seen[1].value === 1 && seen[1].unit === 'days' && /2 tries left/.test(seen[1].message) && seen.every((s) => s.ms === 30000));
   check('"make default" was not ticked, so the default stays', JSON.parse(fs.readFileSync(file, 'utf8')).defaultMinutes === 120);
 
   seen.length = 0;
@@ -72,8 +72,19 @@ check('ctrl+v counts as content insertion', insertsContent(parseSequence('ctrl+v
   check('closing the window refuses the tool', await fails(a) && seen.length === 1);
 
   seen.length = 0;
-  const slow = mk({ prompt: async (o) => { seen.push(o); t += 40000; return { password: 'nope', value: 1, unit: 'hours' }; } });
-  check('wrong passwords until the 30 s window ends refuse the tool', await fails(slow) && seen.length === 1);
+  const bad = mk({ prompt: async (o) => { seen.push(o); return { password: 'nope', value: 1, unit: 'hours' }; } });
+  let msg = '';
+  try { await bad.ensure(); } catch (e) { msg = e.message; }
+  check('three wrong passwords in a row refuse the tool (windows reopen without answering it)', seen.length === 3 && /3 times/.test(msg) && /1 try left/.test(seen[2].message), msg.slice(0, 60));
+
+  // the default duration saved with "make default" is what the next window offers
+  const d = JSON.parse(fs.readFileSync(file, 'utf8'));
+  fs.writeFileSync(file, JSON.stringify({ ...d, defaultMinutes: 10 }));
+  seen.length = 0;
+  answers.push({ password: 'abcdef', value: 10, unit: 'minutes' });
+  await mk().ensure();
+  check('next window offers the saved default (10 minutes)', seen[0].value === 10 && seen[0].unit === 'minutes', JSON.stringify(seen[0]));
+  fs.writeFileSync(file, JSON.stringify({ ...d, defaultMinutes: 120 }));
 
   seen.length = 0;
   let calls = 0;

@@ -6,6 +6,7 @@ param(
   [int]$Value = 0,
   [switch]$MakeDefault,
   [switch]$Cancel,
+  [switch]$Read,        # only report what the dialog shows: "<number>|<unit>|<message line>"
   [int]$WaitSeconds = 15
 )
 Add-Type @'
@@ -20,6 +21,8 @@ public static class W {
   [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, string l);
   [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, StringBuilder l);
+  public static string GetText(IntPtr h) { var s = new StringBuilder(256); SendMessage(h, 0xD, (IntPtr)256, s); return s.ToString(); } // WM_GETTEXT works across processes
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
   public static string Text(IntPtr h) { var s = new StringBuilder(256); GetWindowText(h, s, 256); return s.ToString(); }
   public static string Cls(IntPtr h) { var s = new StringBuilder(256); GetClassName(h, s, 256); return s.ToString(); }
@@ -50,6 +53,12 @@ $kids = foreach ($line in [W]::Children($form)) {
 }
 $BM_CLICK = 0xF5; $WM_SETTEXT = 0xC
 function Button($text) { ($kids | Where-Object { $_.Cls -like '*BUTTON*' -and $_.Text -eq $text } | Select-Object -First 1).H }
+if ($Read) {
+  $num = @($kids | Where-Object { $_.Cls -like '*EDIT*' } | Sort-Object Top)[-1]
+  $unit = $kids | Where-Object { $_.Cls -like '*COMBOBOX*' } | Select-Object -First 1
+  $msg = ($kids | Where-Object { $_.Cls -like '*STATIC*' -and $_.Text -match "tries left|try left|Wrong password|must be at least|do not match" } | Select-Object -First 1).Text
+  Write-Output ("{0}|{1}|{2}" -f [W]::GetText($num.H), [W]::GetText($unit.H), $msg); exit 0
+}
 if ($Cancel) {
   [void][W]::SendMessage((Button 'Cancel'), $BM_CLICK, [IntPtr]::Zero, [IntPtr]::Zero)
   Write-Output 'cancelled'; exit 0

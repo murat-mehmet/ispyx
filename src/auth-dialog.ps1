@@ -90,13 +90,38 @@ $cancel.DialogResult = 'Cancel'; $form.CancelButton = $cancel; $form.Controls.Ad
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 1000
 $timer.Add_Tick({
-  $script:left--
-  $count.Text = "Closes in $($script:left) s"
-  if ($script:left -le 0) { $form.DialogResult = 'Cancel'; $form.Close() }
+  try {
+    $script:left--
+    $count.Text = "Closes in $($script:left) s"
+    if ($script:left -le 0) { $script:timedOut = $true; $form.DialogResult = 'Cancel'; $form.Close() }
+  } catch { [Console]::Error.WriteLine("tick failed: $($_.Exception.Message)") }
 })
 $count.Text = "Closes in $left s"
 $timer.Start()
-$form.Add_Shown({ $form.Activate(); $pw.Focus() })
+# A background process may not take the foreground (foreground lock): attaching to the foreground thread's input lifts it.
+Add-Type -Namespace Native -Name Fg -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool SetForegroundWindow(System.IntPtr h);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, int flags, System.UIntPtr extra);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern System.IntPtr GetForegroundWindow();
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(System.IntPtr h, out uint pid);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool attach);
+[System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+'@
+$script:timedOut = $false
+function Bring-ToFront {
+  $fg = [Native.Fg]::GetForegroundWindow()
+  $pid0 = [uint32]0
+  $fgThread = [Native.Fg]::GetWindowThreadProcessId($fg, [ref]$pid0)
+  $me = [Native.Fg]::GetCurrentThreadId()
+  # (no Alt tap here: an Alt press/release on our own window starts the window-menu mode, which freezes the buttons)
+  $att = $fgThread -ne 0 -and $fgThread -ne $me -and [Native.Fg]::AttachThreadInput($me, $fgThread, $true)
+  [void][Native.Fg]::SetForegroundWindow($form.Handle)
+  if ($att) { [void][Native.Fg]::AttachThreadInput($me, $fgThread, $false) }
+  $form.Activate(); $pw.Focus()
+}
+$form.Add_Shown({
+  try { Bring-ToFront } catch { [Console]::Error.WriteLine("bring-to-front failed: $($_.Exception.Message)") } # never let this block the dialog
+})
 
 $res = $form.ShowDialog()
 $timer.Stop()
@@ -110,6 +135,6 @@ if ($res -eq 'OK') {
     makeDefault = [bool]$chk.Checked
   }
 } else {
-  $out = [ordered]@{ cancel = $true }
+  $out = [ordered]@{ cancel = $true; reason = $(if ($script:timedOut) { 'timeout' } else { 'closed' }) }
 }
 [Console]::Out.WriteLine(($out | ConvertTo-Json -Compress))
