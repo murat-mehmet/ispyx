@@ -48,7 +48,8 @@ const WIDTH = 600;
 const HEIGHT = 40;
 
 export class Overlay {
-  constructor({ enabled = true, hideAfterMs = 1500 } = {}) {
+  constructor({ enabled = true, hideAfterMs = 1500, stopLabel = 'Alt+Esc' } = {}) {
+    this.stopLabel = stopLabel;
     this.enabled = enabled;
     this.hideAfterMs = hideAfterMs;
     this.active = 0;
@@ -124,7 +125,7 @@ export class Overlay {
     if (!this.enabled || this.stopped) return;
     this.active++;
     clearTimeout(this.timer);
-    this._show(`win-input-mcp çalışıyor: ${label}   |   Durdurmak için Alt+Esc`);
+    this._show(`win-input-mcp çalışıyor: ${label}   |   Durdurmak için ${this.stopLabel}`);
   }
 
   done() {

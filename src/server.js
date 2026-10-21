@@ -21,10 +21,10 @@ if (process.platform !== 'win32') {
 w.init();
 const config = loadConfig();
 const guard = new Guard(config);
-const overlay = new Overlay({ enabled: config.overlay });
+const overlay = new Overlay({ enabled: config.overlay, stopLabel: guard.stopLabel });
 guard.overlay = overlay;
 guard.startWatching();
-installStopHotkey((reason) => guard.trigger(reason));
+if (guard.stopIsDefault) installStopHotkey((reason) => guard.trigger(reason)); // the hook is Alt+Esc only
 
 const target = {
   hwnd: z.number().int().optional().describe('Window handle from list_windows. Window-relative mode and focusing use it.'),

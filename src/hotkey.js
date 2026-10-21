@@ -17,8 +17,8 @@ const VK_ESCAPE = 0x1b;
 const LLKHF_INJECTED = 0x10;
 const LLKHF_ALTDOWN = 0x20;
 
-/** True while the person physically holds Alt and Esc (used as a fallback; injected keys also count). */
-export const altEscDown = () => (GetAsyncKeyState(0x12) & 0x8000) !== 0 && (GetAsyncKeyState(VK_ESCAPE) & 0x8000) !== 0;
+/** True while every key of the chord is down right now (used as a fallback; injected keys also count). */
+export const chordDown = (vks) => vks.every((vk) => (GetAsyncKeyState(vk) & 0x8000) !== 0);
 
 export function installStopHotkey(onStop) {
   ensurePump();

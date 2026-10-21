@@ -27,12 +27,12 @@ const check = (name, ok, detail = '') => {
 const sleep = w.sleep;
 const clipboard = () => execFileSync('powershell.exe', ['-NoProfile', '-STA', '-Command', '[Console]::OutputEncoding=[Text.Encoding]::UTF8;Get-Clipboard -Raw'], { encoding: 'utf8' }).replace(/\r?\n$/, '');
 
-function launch() {
+function launch(extraEnv = {}) {
   const client = new Client({ name: 'smoke', version: '1' });
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [path.join(ROOT, 'src', 'server.js')],
-    env: { ...process.env, WIN_INPUT_ALLOWLIST: 'chrome.exe,msedge.exe,notepad.exe', WIN_INPUT_LOG: LOG },
+    env: { ...process.env, WIN_INPUT_ALLOWLIST: 'chrome.exe,msedge.exe,notepad.exe', WIN_INPUT_LOG: LOG, ...extraEnv },
   });
   return client.connect(transport).then(() => client);
 }
@@ -197,12 +197,14 @@ try {
 
 // kill switch needs its own server instance, because it stays tripped until restart
 {
-  const c2 = await launch();
-  w._raw.SetCursorPos(0, 0);
+  // The test server gets a huge corner (500 px) so the pointer can go to (300,300): moving the real
+  // pointer to (0,0) would trip every other win-input server running on this machine.
+  const c2 = await launch({ WIN_INPUT_KILL_CORNER_PX: '500' });
+  w._raw.SetCursorPos(300, 300);
   await sleep(150);
   const r = await call(c2, 'list_windows');
   check('kill switch refuses after pointer in top-left corner', r.isError && /STOPPED BY THE USER/.test(r.data), r.data);
-  w._raw.SetCursorPos(400, 400);
+  w._raw.SetCursorPos(700, 500);
   const r2 = await call(c2, 'list_windows');
   check('kill switch stays latched until restart', r2.isError);
   await c2.close();

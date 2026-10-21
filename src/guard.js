@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as w from './win32.js';
-import { altEscDown } from './hotkey.js';
+import { chordDown } from './hotkey.js';
+import { parseChord } from './keys.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -17,6 +18,7 @@ const DEFAULTS = {
   denylist: ['keepass.exe', 'keepassxc.exe', '1password.exe', 'bitwarden.exe'],
   logPath: path.join(ROOT, 'logs', 'actions.jsonl'),
   killCornerPx: 2,
+  stopChord: 'alt+esc', // emergency stop keys (env WIN_INPUT_STOP_CHORD, meant for tests)
   overlay: true, // banner on screen while a tool runs
   humanMotion: true, // pointer glides along a curve instead of jumping
   humanTyping: true, // type one character at a time at a human pace
@@ -45,6 +47,10 @@ export function loadConfig(env = process.env) {
   if (env.WIN_INPUT_DENYLIST) cfg.denylist = env.WIN_INPUT_DENYLIST.split(',');
   if (env.WIN_INPUT_GLOBAL) cfg.global = !/^(0|false|no)$/i.test(env.WIN_INPUT_GLOBAL);
   cfg.global = !!cfg.global;
+  // test-only knobs: let a test server use a different corner size / stop chord, so tests never have to
+  // move the real pointer to (0,0) or press Alt+Esc, which would also trip every other running server
+  if (env.WIN_INPUT_KILL_CORNER_PX) cfg.killCornerPx = Number(env.WIN_INPUT_KILL_CORNER_PX);
+  if (env.WIN_INPUT_STOP_CHORD) cfg.stopChord = env.WIN_INPUT_STOP_CHORD;
   if (env.WIN_INPUT_HUMAN_TYPING) cfg.humanTyping = !/^(0|false|no)$/i.test(env.WIN_INPUT_HUMAN_TYPING);
   if (env.WIN_INPUT_OVERLAY) cfg.overlay = !/^(0|false|no)$/i.test(env.WIN_INPUT_OVERLAY);
   if (env.WIN_INPUT_HUMAN_MOTION) cfg.humanMotion = !/^(0|false|no)$/i.test(env.WIN_INPUT_HUMAN_MOTION);
@@ -60,6 +66,9 @@ export class Guard {
     this.config = config;
     this.killed = false;
     this.killReason = '';
+    this.stopVks = parseChord(config.stopChord);
+    this.stopLabel = config.stopChord.split('+').map((s) => s[0].toUpperCase() + s.slice(1)).join('+');
+    this.stopIsDefault = config.stopChord === 'alt+esc';
     this.overlay = null;
     this.lastWindow = 0;
     this.shots = new Map(); // hwnd -> { scale, ox, oy } of the last window screenshot (ox/oy: crop origin in window pixels)
@@ -96,11 +105,11 @@ export class Guard {
     if (!this.killed) {
       const p = w.cursorPos();
       if (this.inCorner(p.x, p.y)) this.trigger('mouse in top-left corner');
-      else if (!this.heldKeys.has(0x1b) && altEscDown()) this.trigger('Alt+Esc');
+      else if (!this.heldKeys.has(this.stopVks[this.stopVks.length - 1]) && chordDown(this.stopVks)) this.trigger(this.stopLabel);
     }
     if (this.killed) {
-      throw new ToolError(this.killReason === 'Alt+Esc'
-        ? 'STOPPED BY THE USER (Alt+Esc). Stop all work now and do not retry; tell the user you were stopped. Every action is refused until the server is restarted.'
+      throw new ToolError(this.killReason === this.stopLabel
+        ? `STOPPED BY THE USER (${this.stopLabel}). Stop all work now and do not retry; tell the user you were stopped. Every action is refused until the server is restarted.`
         : 'STOPPED BY THE USER (mouse moved into the top-left screen corner). Stop all work now and do not retry; tell the user you were stopped. Every action is refused until the server is restarted.');
     }
   }

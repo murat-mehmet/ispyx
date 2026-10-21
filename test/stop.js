@@ -1,6 +1,6 @@
-// Banner + emergency stop test. Uses a fresh Notepad window as the foreground window, because Alt+Esc
+// Banner + emergency stop test. Uses a fresh Notepad window as the foreground window,
 // makes Windows cycle to the next window. The banner must show while a tool runs, be click-through, and
-// disappear afterwards; Alt+Esc must abort a running tool with an error and refuse everything after it.
+// disappear afterwards; the stop chord must abort a running tool with an error and refuse everything after it.
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
@@ -25,7 +25,7 @@ const client = new Client({ name: 'stop-test', version: '1' });
 await client.connect(new StdioClientTransport({
   command: process.execPath,
   args: [path.join(ROOT, 'src', 'server.js')],
-  env: { ...process.env, WIN_INPUT_GLOBAL: '1', WIN_INPUT_ALLOWLIST: '', WIN_INPUT_LOG: path.join(os.tmpdir(), `win-input-mcp-stop-${Date.now()}.jsonl`) },
+  env: { ...process.env, WIN_INPUT_GLOBAL: '1', WIN_INPUT_ALLOWLIST: '', WIN_INPUT_STOP_CHORD: 'alt+f24', WIN_INPUT_LOG: path.join(os.tmpdir(), `win-input-mcp-stop-${Date.now()}.jsonl`) },
 }));
 const call = async (name, args = {}) => {
   const r = await client.callTool({ name, arguments: args });
@@ -57,11 +57,11 @@ try {
     check('banner has no title, so list_windows does not show it', !w.listWindows().some((x) => x.hwnd === ov));
   }
 
-  // emergency stop: a press of Alt+Esc while the tool is running
+  // emergency stop: a press of the (test) stop chord while the tool is running
   const t0 = performance.now();
-  w.keysDown([0x12, 0x1b]);
+  w.keysDown([0x12, 0x87]); // Alt+F24: this test's own stop chord, so no other running server is stopped
   await sleep(120);
-  w.keysUp([0x12, 0x1b]);
+  w.keysUp([0x12, 0x87]);
   const res = await inflight;
   const took = performance.now() - t0;
   check('running tool is aborted with an error', res.isError && /STOPPED BY THE USER/.test(res.text) && /Alt\+Esc/.test(res.text), res.text.slice(0, 80));
@@ -85,7 +85,7 @@ try {
   const c2 = new Client({ name: 'banner-test', version: '1' });
   await c2.connect(new StdioClientTransport({
     command: process.execPath, args: [path.join(ROOT, 'src', 'server.js')],
-    env: { ...process.env, WIN_INPUT_GLOBAL: '1', WIN_INPUT_ALLOWLIST: '', WIN_INPUT_LOG: path.join(os.tmpdir(), `win-input-mcp-banner-${Date.now()}.jsonl`) },
+    env: { ...process.env, WIN_INPUT_GLOBAL: '1', WIN_INPUT_ALLOWLIST: '', WIN_INPUT_STOP_CHORD: 'alt+f24', WIN_INPUT_LOG: path.join(os.tmpdir(), `win-input-mcp-banner-${Date.now()}.jsonl`) },
   }));
   const p = c2.callTool({ name: 'wait', arguments: { ms: 800 } });
   await sleep(300);

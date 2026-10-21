@@ -72,6 +72,10 @@ By default the pointer **glides** to every target (`click`, `move`, `mouse_down`
 - **Alt+Esc** (pressed by you) stops everything at once: the running tool returns an error saying `STOPPED BY THE USER ... Stop all work now and do not retry`, held keys and buttons are released, the banner turns red, and every later call fails with the same message until the server is restarted. Alt+Esc is caught by a low-level keyboard hook that swallows the Esc, so Windows does not also cycle windows (an Alt tap may still focus the menu bar of the active window). Keys injected by this server never trigger it; a polling fallback covers moments when the hook is not serviced. The top-left corner kill switch stops the same way.
 - Why not Ctrl+Esc: Windows opens the Start menu on it before an app can react.
 
+## Testing safely next to other servers
+
+The corner watcher and the stop chord read global state (pointer position, keyboard), so a test that moves the pointer to (0,0) or presses Alt+Esc would stop every other win-input server on the machine. Tests therefore use test-only settings on their own server: `WIN_INPUT_KILL_CORNER_PX` (the smoke test uses 500 and moves the pointer to (300,300)) and `WIN_INPUT_STOP_CHORD` (the stop test uses `alt+f24`). The real defaults (2 px corner, Alt+Esc with its swallowing hook) are unchanged. The hook is only installed for the default chord.
+
 ## Action log
 
 Every action, refusal and error is appended as one JSON line, with a timestamp, to `G:\win-input-mcp\logs\actions.jsonl` (override with `logPath` or `WIN_INPUT_LOG`). Fields: `time`, `tool`, `window` (hwnd, title, process; in global mode the window under the pointer), `coords` (as given and in screen pixels), `args` (including typed text), `ok`, `error`. Text aimed at a password field is never logged (only the character count of the refused text). `get_clipboard` logs the length only. Kill-switch trips are logged.
