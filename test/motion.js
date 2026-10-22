@@ -64,7 +64,7 @@ const durations = [];
 try {
   for (let run = 0; run < 3; run++) {
     const [s, e] = run % 2 === 0 ? [A, B] : [B, A];
-    await call('move', { space: 'screen', x: s.x, y: s.y, instant: true });
+    await call('move', { space: 'screen', x: s.x, y: s.y, durationMs: 150 });
     await w.sleep(100);
     const samples = [];
     let stop = false;
@@ -93,8 +93,9 @@ try {
   }
   check('durations differ between runs', new Set(durations.map(Math.round)).size === 3, durations.map(Math.round).join(', '));
   const t = performance.now();
-  await call('move', { space: 'screen', x: A.x, y: A.y, instant: true });
-  check('instant: true still jumps', performance.now() - t < 250, `${Math.round(performance.now() - t)} ms`);
+  await call('move', { space: 'screen', x: A.x, y: A.y, durationMs: 0 });
+  const took = performance.now() - t;
+  check('durationMs 0 does not teleport (glides at least 120 ms)', took >= 110 && took < 400, `${Math.round(took)} ms`);
 } finally {
   await client.close();
 }

@@ -122,7 +122,7 @@ try {
   await call(client, 'click', { hwnd, x: maxX + 40, y: midY }); // collapse the selection after the text
   await call(client, 'set_clipboard', { text: 'sentinel' });
   const dragTo = Math.round(minX + (maxX - minX) * 0.55);
-  r = await call(client, 'drag', { hwnd, fromX: minX + 1, fromY: midY, toX: dragTo, toY: midY, steps: 15 });
+  r = await call(client, 'drag', { hwnd, fromX: minX + 1, fromY: midY, toX: dragTo, toY: midY });
   check('drag', !r.isError, r.isError ? r.data : '');
   await call(client, 'press_keys', { hwnd, keys: 'ctrl+c' });
   await sleep(300);
@@ -152,7 +152,7 @@ try {
   check('move with cropped coordinates lands on the mapped pixel', !r.isError && Math.abs(cur2.x - wx) <= 1 && Math.abs(cur2.y - wy) <= 1, 'cursor ' + cur2.x + ',' + cur2.y + ' expected ' + wx + ',' + wy);
   await call(client, 'click', { hwnd, x: cx1 + 12, y: cmy }); // collapse the selection, caret after the text
   await call(client, 'set_clipboard', { text: 'sentinel' });
-  r = await call(client, 'drag', { hwnd, fromX: cx0 + 1, fromY: cmy, toX: Math.round(cx0 + (cx1 - cx0) * 0.55), toY: cmy, steps: 10 });
+  r = await call(client, 'drag', { hwnd, fromX: cx0 + 1, fromY: cmy, toX: Math.round(cx0 + (cx1 - cx0) * 0.55), toY: cmy });
   await call(client, 'press_keys', { hwnd, keys: 'ctrl+c' });
   await sleep(300);
   const part2 = clipboard();

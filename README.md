@@ -66,8 +66,8 @@ By default the pointer **glides** to every target (`click`, `move`, `mouse_down`
 
 - Typing is human-paced too: `type_text` sends one character at a time, pausing a random 60-200 ms after each (longer after spaces and punctuation, now and then a short thinking pause). Texts that would take over 60 s are sped up to fit; use `set_clipboard` + `ctrl+v` for bulk text. Typing is always human-paced (there is no `instant`). `speed` divides the waits: default `1`; `2` = twice as fast (half the waits), `0.5` = twice as slow, `0` = a fixed 8 ms after every character (the fastest; text is never sent as one batch, because apps drop and repeat characters then). No wait is ever under 8 ms, and the 60 s cap is applied after `speed`. Per call: `type_text { speed }`; default: config `typeSpeed` or env `WIN_INPUT_TYPE_SPEED`. Other config: `typeMinMs`, `typeMaxMs`, `typeCapMs`.
 - Scrolling is smoothed the same way: the amount is spread over ~80-120 small wheel events along the same speed curve, so pages scroll continuously.
-- Per call: `instant: true` jumps; `durationMs` fixes the travel time.
-- Config: `humanMotion` (default true), `moveMinMs` (300), `moveMaxMs` (1000); env `WIN_INPUT_HUMAN_MOTION=0` turns it off.
+- Per call: `durationMs` fixes the travel time (minimum 120 ms). There is no jump mode: the pointer never teleports.
+- Config: `moveMinMs` (300), `moveMaxMs` (1000).
 - Moves under 4 px are instant. `npm run motion-test` checks duration, curvature, smoothness and exact arrival.
 
 ## Running banner and emergency stop
@@ -104,8 +104,8 @@ The server runs per-monitor DPI aware (v2): screenshots, clicks and cursor readi
 | `screenshot_window` | One window via `PrintWindow(PW_RENDERFULLCONTENT)`. Returns PNG + `scale` + `rect`. Optional `region` {x, y, width, height} crops inside the window (window pixels from its top-left, before `maxWidth` scaling; clamped to the window, error if fully outside; `maxWidth` applies to the crop) and is echoed back clamped. **Mapping back:** the server remembers the crop origin and scale of the last `screenshot_window` per hwnd, so pointer tools with `space: "window"` and that hwnd take coordinates in the cropped image directly (no `region` on the pointer tools). A later uncropped shot resets it. |
 | `screenshot_screen` | One monitor (`monitor`), everything (`all: true`) or a `region` in desktop pixels. Returns `rect` + `scale`. |
 | `click` | left/right/middle, `double` or `clicks` up to 3, `modifiers` (`ctrl`, `shift`, `alt`, `win`) held during the click. |
-| `move`, `mouse_down`, `mouse_up`, `drag` | Pointer control. `drag` moves in steps (HTML5 drag-and-drop needs them) and takes `modifiers`. Held buttons are released on kill switch or shutdown. |
-| `scroll` | **Smooth** wheel at a point (spread over many small wheel events, 300-1000 ms plus ~40 ms per notch; `instant: true` for one jump; `durationMs` to fix it): `amount` vertical notches (+ up), `horizontal` notches (+ right), optional `modifiers` (e.g. ctrl+wheel to zoom). |
+| `move`, `mouse_down`, `mouse_up`, `drag` | Pointer control. `drag` glides to the start and to the end (many small moves, as HTML5 drag-and-drop needs) and takes `modifiers`. Held buttons are released on kill switch or shutdown. |
+| `scroll` | **Smooth** wheel at a point (spread over many small wheel events, 300-1000 ms plus ~40 ms per notch; `durationMs` to fix it): `amount` vertical notches (+ up), `horizontal` notches (+ right), optional `modifiers` (e.g. ctrl+wheel to zoom). |
 | `type_text` | Unicode key events (Turkish and other non-ASCII), one character at a time at a human pace; `speed` multiplier (1 default, 2 = half the waits, 0 = fixed 8 ms per character). Refused in password fields. Goes to the foreground window, or to `hwnd`/`title` after focusing it. |
 | `press_keys` | Chords such as `ctrl+v`, `alt+tab`, `win+r`, `win+d`, `f5`; several separated by spaces. Windows key allowed. |
 | `key_down`, `key_up` | Hold and release keys (e.g. shift for a multi-select). Released automatically on kill switch or shutdown. |

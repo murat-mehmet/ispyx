@@ -84,9 +84,9 @@ const xy = {
 };
 const buttons = z.enum(['left', 'right', 'middle']).default('left');
 const modifiers = z.array(z.enum(['ctrl', 'shift', 'alt', 'win'])).optional().describe('Keys held down during the action, e.g. ["ctrl"] for ctrl+click.');
+const MIN_GLIDE_MS = 120; // the pointer never teleports, whatever durationMs says
 const motion = {
-  instant: z.boolean().optional().describe('Jump straight to the target instead of gliding like a hand.'),
-  durationMs: z.number().int().min(0).max(5000).optional().describe('Glide time; default random 300-1000 ms.'),
+  durationMs: z.number().int().min(0).max(5000).optional().describe(`Glide time, at least ${MIN_GLIDE_MS} ms; default random 300-1000 ms. The pointer never jumps.`),
 };
 const MOD_VK = { ctrl: 0x11, shift: 0x10, alt: 0x12, win: 0x5b };
 
@@ -173,20 +173,19 @@ async function pointMapper(args, entry) {
   };
 }
 
-const humanMotion = (args) => config.humanMotion && !args.instant;
 
 /**
  * Move the pointer to p like a hand would: a curved path with a smooth speed profile, taking a random
- * 300-1000 ms (config moveMinMs/moveMaxMs, or durationMs). `instant: true` or humanMotion:false jumps.
+ * 300-1000 ms (config moveMinMs/moveMaxMs, or durationMs).
  */
 async function glide(p, args = {}) {
   const from = w.cursorPos();
   const dist = Math.hypot(p.sx - from.x, p.sy - from.y);
-  if (!humanMotion(args) || dist < 4) {
+  if (dist < 4) {
     w.mouseMoveTo(p.sx, p.sy);
     return;
   }
-  const ms = args.durationMs ?? randomDuration(config.moveMinMs, config.moveMaxMs);
+  const ms = Math.max(MIN_GLIDE_MS, args.durationMs ?? randomDuration(config.moveMinMs, config.moveMaxMs));
   const path = curvedPath(from, { x: p.sx, y: p.sy });
   const v = w.virtualScreen();
   const t0 = performance.now();
@@ -208,16 +207,11 @@ async function glide(p, args = {}) {
  * Wheel like a hand on a smooth-scrolling mouse: the total is spread over many small wheel events
  * (a fraction of a notch each) following the same smooth speed curve as the pointer glide, so pages
  * scroll continuously instead of jumping. Duration: random 300-1000 ms, longer for big scrolls
- * (or durationMs). `instant` sends the whole amount in one event.
+ * (or durationMs).
  */
 async function smoothWheel(vert, horiz, args) {
-  if (!humanMotion(args)) {
-    if (vert) w.mouseWheel(vert);
-    if (horiz) w.mouseHWheel(horiz);
-    return { events: 1, ms: 0 };
-  }
   const big = Math.max(Math.abs(vert), Math.abs(horiz));
-  const ms = args.durationMs ?? Math.min(2500, randomDuration(config.moveMinMs, config.moveMaxMs) + Math.round(big * 40));
+  const ms = Math.max(MIN_GLIDE_MS, args.durationMs ?? Math.min(2500, randomDuration(config.moveMinMs, config.moveMaxMs) + Math.round(big * 40)));
   const totalV = Math.round(vert * 120);
   const totalH = Math.round(horiz * 120);
   let sentV = 0, sentH = 0, events = 0;
@@ -412,12 +406,10 @@ server.registerTool('mouse_up', {
 }));
 
 server.registerTool('drag', {
-  description: 'Press the button at the start point, move to the end point in steps (needed for HTML5 drag-and-drop), release. Optional held modifiers.',
+  description: 'Glide to the start point, press the button, glide to the end point (many small moves, as HTML5 drag-and-drop needs), release. Optional held modifiers.',
   inputSchema: { ...motion,
     ...target, space,
     fromX: z.number(), fromY: z.number(), toX: z.number(), toY: z.number(),
-    steps: z.number().int().min(1).max(500).default(20),
-    delayMs: z.number().int().min(0).max(1000).default(10).describe('Pause between steps.'),
     button: buttons,
     modifiers,
   },
@@ -426,8 +418,6 @@ server.registerTool('drag', {
   const a = map(args.fromX, args.fromY);
   const z2 = map(args.toX, args.toY);
   entry.coords = { from: { x: args.fromX, y: args.fromY, screen: { x: a.sx, y: a.sy } }, to: { x: args.toX, y: args.toY, screen: { x: z2.sx, y: z2.sy } } };
-  const steps = args.steps ?? 20;
-  const delay = args.delayMs ?? 10;
   const b = args.button ?? 'left';
   await withModifiers(args.modifiers, async () => {
     await glide(a, args);
@@ -436,15 +426,7 @@ server.registerTool('drag', {
     guard.heldButtons.add(b);
     try {
       await w.sleep(40);
-      if (humanMotion(args)) {
-        await glide(z2, args);
-      } else {
-        for (let i = 1; i <= steps; i++) {
-          guard.checkKill();
-          w.mouseMoveTo(Math.round(a.sx + ((z2.sx - a.sx) * i) / steps), Math.round(a.sy + ((z2.sy - a.sy) * i) / steps));
-          if (delay) await w.sleep(delay);
-        }
-      }
+      await glide(z2, args);
       await w.sleep(40);
     } finally {
       w.mouseUp(b);
@@ -455,7 +437,7 @@ server.registerTool('drag', {
 }));
 
 server.registerTool('scroll', {
-  description: 'Smooth mouse wheel at a point (spread over 300-1000+ ms; instant: true for one jump). `amount`: vertical notches, positive up, negative down. `horizontal`: horizontal notches, positive right, negative left. Either or both.',
+  description: 'Smooth mouse wheel at a point (spread over 300-1000+ ms). `amount`: vertical notches, positive up, negative down. `horizontal`: horizontal notches, positive right, negative left. Either or both.',
   inputSchema: { ...motion,
     ...target, space, ...xy,
     amount: z.number().min(-100).max(100).optional(),
