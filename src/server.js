@@ -6,7 +6,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import * as w from './win32.js';
-import { Guard, ToolError, loadConfig, winSummary } from './guard.js';
+import { Guard, ToolError, callContext, loadConfig, winSummary } from './guard.js';
 import { shrinkToPng, cropCapture } from './image.js';
 import { parseSequence, insertsContent } from './keys.js';
 import { curvedPath, ease, randomDuration, typingDelays } from './motion.js';
@@ -31,6 +31,7 @@ function initCore() {
   guard = new Guard(config);
   overlay = new Overlay({ enabled: config.overlay, stopLabel: guard.stopLabel });
   guard.overlay = overlay;
+  guard.onShutdown = () => process.exit(0);
   auth = new Auth({ enabled: config.auth, ...(config.authFile ? { file: config.authFile } : {}) });
   guard.startWatching();
   if (guard.stopIsDefault) stopHook = installStopHotkey((reason) => guard.trigger(reason)); // Alt+Esc only; installed while working
@@ -46,13 +47,15 @@ async function tryBecomeOwner() {
 
 const handlers = new Map();
 let chain = Promise.resolve();
-const UNQUEUED = new Set(['wait', 'resume']);
+const UNQUEUED = new Set(['wait']);
 /** Runs a tool here. Calls from all Claude instances take turns, so two of them never fight over the pointer. */
 function runTool(name, args) {
   const h = handlers.get(name);
   if (!h) throw new Error(`Unknown tool ${name}`);
-  if (UNQUEUED.has(name)) return h(args);
-  const p = chain.then(() => h(args));
+  const ctx = { epoch: guard.epoch }; // a stop press after this point cancels the call, queued or running
+  const call = () => callContext.run(ctx, () => h(args));
+  if (UNQUEUED.has(name)) return call();
+  const p = chain.then(call);
   chain = p.catch(() => {});
   return p;
 }
@@ -549,17 +552,6 @@ server.registerTool('key_up', {
   vks.forEach((k) => guard.heldKeys.delete(k));
   return json({ ok: true, held: guard.heldKeys.size });
 }));
-
-server.registerTool('resume', {
-  description: 'Clear an emergency stop (the user pressed Alt+Esc). Call it ONLY after the user has told you to continue; until then every other tool refuses. Does nothing if no stop is active.',
-}, async () => {
-  try {
-    const cleared = guard.resume();
-    return json({ ok: true, resumed: cleared });
-  } catch (e) {
-    return { isError: true, content: [{ type: 'text', text: e.message }] };
-  }
-});
 
 server.registerTool('wait', {
   description: 'Pause (milliseconds, up to 60000), for page loads and animations. The kill switch is checked while waiting.',

@@ -40,8 +40,10 @@ export function installStopHotkey(onStop, lingerMs = HOOK_LINGER_MS) {
         if (vk === VK_ESCAPE && !(flags & LLKHF_INJECTED)) {
           const down = wp === 0x100 || wp === 0x104;
           if (down && flags & LLKHF_ALTDOWN) {
-            swallowUp = true;
-            setImmediate(() => onStop('Alt+Esc'));
+            if (!swallowUp) { // key auto-repeat while held counts as one press
+              swallowUp = true;
+              setImmediate(() => onStop('Alt+Esc'));
+            }
             return 1; // swallowed: no window cycling
           }
           if (!down && swallowUp) {

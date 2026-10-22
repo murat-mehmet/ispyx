@@ -122,14 +122,14 @@ export class Overlay {
 
   /** A tool started: show the banner. Call done() when it ends. */
   begin(label) {
-    if (!this.enabled || this.stopped) return;
+    if (!this.enabled) return;
     this.active++;
     clearTimeout(this.timer);
     this._show(`win-input-mcp is working: ${label}   |   To stop press ${this.stopLabel}`);
   }
 
   done() {
-    if (!this.enabled || this.stopped) return;
+    if (!this.enabled) return;
     this.active = Math.max(0, this.active - 1);
     if (this.active === 0) {
       clearTimeout(this.timer);
@@ -148,12 +148,14 @@ export class Overlay {
     this.timer.unref();
   }
 
-  /** The stop was cleared (resume tool): back to normal. */
-  resume() {
-    this.stopped = false;
+  /** First stop press: the running tool was cancelled; a second press within the window shuts the server down. */
+  cancel(reason, windowMs) {
+    if (!this.enabled) return;
     this.active = 0;
     clearTimeout(this.timer);
-    this._hide();
+    this._show(`win-input-mcp CANCELLED (${reason})   |   press again to shut down`);
+    this.timer = setTimeout(() => this._hide(), windowMs);
+    this.timer.unref();
   }
 
   /** Hide the banner while the agent takes a screenshot, so it never covers what the agent needs to see. */

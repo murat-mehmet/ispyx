@@ -57,7 +57,6 @@ Other keys: `maxTypeLength` (default 10000).
 - **No answer in 30 seconds (fixed; each window gets its own 30 s):** the window closes by itself and the tool returns a plain error ("Password was not entered ..."). The next call asks again.
 - **Unlocked:** no window, no questions, until the time runs out. The unlock is kept **in memory only**: every server start, including every `/mcp` reconnect, asks again. Parallel tool calls share one window.
 - **Forgot the password / want to reset:** delete `%APPDATA%\win-input-mcp\auth.json` (the next start asks you to choose a new one).
-- `resume` (the stop-clearing tool) is not behind the gate.
 - `npm run auth-test` drives the real window (temp file only); the unit tests cover the logic.
 
 ## Human-like pointer motion
@@ -73,7 +72,7 @@ By default the pointer **glides** to every target (`click`, `move`, `mouse_down`
 ## Running banner and emergency stop
 
 - **Banner:** while a tool runs, a small dark banner (`win-input-mcp is working: <tool>   |   To stop press Alt+Esc`) shows at the top centre of the primary monitor and hides 1.5 s after the last tool call. It is click-through (WS_EX_TRANSPARENT, `WM_NCHITTEST` returns transparent, never takes focus), so it catches no click and does not count as a window under the pointer. It stays visible in screen recordings, but is hidden for a moment while the agent takes a screenshot so it never covers what the agent needs to see. Turn it off with config `overlay: false` or `WIN_INPUT_OVERLAY=0`.
-- **Alt+Esc** (pressed by you) stops everything at once: the running tool returns an error saying `STOPPED BY THE USER ... Stop all work now and do not retry`, held keys and buttons are released, the banner turns red, and every later call fails with the same message until the user says to continue and the agent calls the `resume` tool (or the server is restarted). Alt+Esc is caught by a low-level keyboard hook that swallows the Esc, so Windows does not also cycle windows (an Alt tap may still focus the menu bar of the active window). Keys injected by this server never trigger it; a polling fallback covers moments when the hook is not serviced. There is no mouse-corner switch.
+- **Alt+Esc** (pressed by you): one press cancels everything running or queued (the tool returns an error saying `CANCELLED BY THE USER`, held keys and buttons are released, the banner turns red for 5 s) and the next call works normally; a second press within 5 s shuts the server down. Alt+Esc is caught by a low-level keyboard hook that swallows the Esc, so Windows does not also cycle windows (an Alt tap may still focus the menu bar of the active window). Keys injected by this server never trigger it; a polling fallback covers moments when the hook is not serviced. There is no mouse-corner switch.
 - Why not Ctrl+Esc: Windows opens the Start menu on it before an app can react.
 
 ## Testing safely next to other servers
@@ -110,14 +109,13 @@ The server runs per-monitor DPI aware (v2): screenshots, clicks and cursor readi
 | `press_keys` | Chords such as `ctrl+v`, `alt+tab`, `win+r`, `win+d`, `f5`; several separated by spaces. Windows key allowed. |
 | `key_down`, `key_up` | Hold and release keys (e.g. shift for a multi-select). Released automatically on kill switch or shutdown. |
 | `wait` | Pause up to 60 s (stop key checked while waiting). |
-| `resume` | Clear an Alt+Esc stop. Call it only after the user said to continue. |
 | `set_clipboard`, `get_clipboard` | Write text / image / file; read text (reports whether an image or files are present). |
 
 Typical flow: `screenshot_screen` → read coordinates off the image → `click` (`space: "shot"`) / `type_text` → `screenshot_screen` to check.
 
 ## Safety
 
-- **Emergency stop:** Alt+Esc is the only stop (its keyboard hook is installed only while a tool runs and for 30 s after the last call) (there is no mouse-corner switch). Every action is refused and held keys and buttons are released, until the user tells the agent to continue and it calls `resume` (or the server restarts).
+- **Emergency stop:** Alt+Esc is the only stop (its keyboard hook is installed only while a tool runs and for 30 s after the last call; there is no mouse-corner switch). **One press** cancels every running and queued tool call (held keys and buttons are released) and the next call works normally. **A second press within 5 s** shuts the server down (the Claude that owns it shows it as disconnected until `/mcp` reconnect; another connected Claude may take over on its next call).
 - **Password fields:** `type_text` (and paste chords) are refused when the focused control is a password field (Win32 `ES_PASSWORD` and UI Automation `IsPassword`, which covers browser fields). If the check cannot run, the action is refused.
 - **No credentials:** the server never reads, stores or types saved passwords, and drives no password manager (default denylist). Log in yourself.
 - **Plain errors** for: foreground lock refused, window minimized / not capturable, elevated target (UIPI), locked screen, emergency stop, password not entered, denylisted program.
@@ -142,7 +140,7 @@ Typical flow: `screenshot_screen` → read coordinates off the image → `click`
 npm test        # unit checks (PNG, key parsing, password-field detection)
 npm run smoke   # drives the real server over stdio against a fresh Notepad tab
 npm run chrome-test   # Chrome end-to-end: Google search through the server (see below)
-npm run stop-test     # banner shows, is click-through; Alt+Esc aborts a running tool and blocks later calls
+npm run stop-test     # banner shows, is click-through; Alt+Esc cancels a running tool, a second press within 5 s shuts the server down
 npm run motion-test   # pointer glides along a curve in 300-1000 ms, lands exactly
 npm run instagram-test # new Chrome window, scroll checks, Instagram login page (look only)
 ```
@@ -178,4 +176,4 @@ It never types into or clicks anything on Instagram (the only text typed is the 
 
 ## Several Claude instances
 
-Every Claude instance starts its own `server.js`, but only one of them does the work. The first process listens on a named pipe (`\.\pipe\win-input-mcp-<user>-<hash of WIN_INPUT_* env>`) and owns the keyboard hook, banner, stop state and password unlock. The others stay normal MCP servers toward their own Claude and forward each tool call over the pipe, so nothing disconnects. Calls from all instances take turns (`wait` and `resume` excepted). If the owner dies, the next call from another instance takes over; if the owner's Claude closes, it keeps serving the others until they are gone. Servers started with different `WIN_INPUT_*` settings (tests) get their own pipe. `npm run instances-test` checks this.
+Every Claude instance starts its own `server.js`, but only one of them does the work. The first process listens on a named pipe (`\.\pipe\win-input-mcp-<user>-<hash of WIN_INPUT_* env>`) and owns the keyboard hook, banner, stop state and password unlock. The others stay normal MCP servers toward their own Claude and forward each tool call over the pipe, so nothing disconnects. Calls from all instances take turns (`wait` excepted). If the owner dies, the next call from another instance takes over; if the owner's Claude closes, it keeps serving the others until they are gone. Servers started with different `WIN_INPUT_*` settings (tests) get their own pipe. `npm run instances-test` checks this.

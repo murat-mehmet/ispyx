@@ -49,7 +49,7 @@ const client = await launch();
 let hwnd = 0;
 try {
   const tools = (await client.listTools()).tools.map((t) => t.name).sort();
-  const want = ['click', 'cursor_position', 'drag', 'focus_window', 'get_clipboard', 'key_down', 'key_up', 'list_monitors', 'list_windows', 'mouse_down', 'mouse_up', 'move', 'press_keys', 'resume', 'screenshot_screen', 'screenshot_window', 'scroll', 'set_clipboard', 'type_text', 'wait'];
+  const want = ['click', 'cursor_position', 'drag', 'focus_window', 'get_clipboard', 'key_down', 'key_up', 'list_monitors', 'list_windows', 'mouse_down', 'mouse_up', 'move', 'press_keys', 'screenshot_screen', 'screenshot_window', 'scroll', 'set_clipboard', 'type_text', 'wait'];
   check('tool list', JSON.stringify(tools) === JSON.stringify(want), tools.join(','));
 
   const before = (await call(client, 'list_windows')).data;
@@ -210,7 +210,7 @@ try {
   await client.close();
 }
 
-// the emergency stop (and resume) is covered by stop-test, on its own chord
+// the emergency stop is covered by stop-test, on its own chord
 const logLines = fs.existsSync(LOG) ? fs.readFileSync(LOG, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
 check('action log written', logLines.some((l) => l.tool === 'type_text' && l.args.text === TEXT), `${logLines.length} lines at ${LOG}`);
 

@@ -1,5 +1,6 @@
 // Safety layer: config, process denylist, emergency stop, action log.
 import fs from 'node:fs';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as w from './win32.js';
@@ -51,11 +52,16 @@ export function loadConfig(env = process.env) {
   return cfg;
 }
 
+export const callContext = new AsyncLocalStorage(); // { epoch } of the tool call being served
+const SHUTDOWN_WINDOW_MS = 5000;
+
 export class Guard {
   constructor(config) {
     this.config = config;
-    this.killed = false;
-    this.killReason = '';
+    this.epoch = 0; // bumped by every stop press; a call that started under an older epoch is cancelled
+    this.lastStopAt = 0;
+    this.chordSeen = false;
+    this.onShutdown = () => process.exit(0);
     this.stopVks = parseChord(config.stopChord);
     this.stopLabel = config.stopChord.split('+').map((s) => s[0].toUpperCase() + s.slice(1)).join('+');
     this.stopIsDefault = config.stopChord === 'alt+esc';
@@ -70,38 +76,46 @@ export class Guard {
 
   /** Poll the stop chord, as a fallback for moments when the keyboard hook is not serviced. */
   startWatching() {
-    const t = setInterval(() => {
-      try { this.checkKill(); } catch { /* latched */ }
-    }, 15);
+    const t = setInterval(() => this.pollChord(), 15);
     t.unref();
   }
 
-  /** Latch the stop: everything stops, held keys/buttons are released, later calls fail until resume. */
+  /** One physical press of the chord seen by polling (edge only, so holding the keys counts once). */
+  pollChord() {
+    const down = chordDown(this.stopVks) && !this.heldKeys.has(this.stopVks[this.stopVks.length - 1]);
+    if (down && !this.chordSeen) this.trigger(this.stopLabel);
+    this.chordSeen = down;
+  }
+
+  /**
+   * The user pressed the stop chord. First press: cancel every running or queued call (the next call works
+   * normally). A second press within SHUTDOWN_WINDOW_MS: release everything and shut this server down.
+   */
   trigger(reason) {
-    if (this.killed) return;
-    this.killed = true;
-    this.killReason = reason;
-    this.log({ tool: 'kill_switch', note: reason });
+    const now = Date.now();
+    if (now - this.lastStopAt < 250) return; // hook and polling saw the same press
+    const second = this.lastStopAt && now - this.lastStopAt < SHUTDOWN_WINDOW_MS;
+    this.lastStopAt = now;
+    this.chordSeen = true;
+    this.epoch++;
     this.releaseAll();
-    this.overlay?.stop(reason);
+    if (second) {
+      this.log({ tool: 'kill_switch', note: reason + ' twice: shutting down' });
+      this.overlay?.stop('shutting down');
+      setTimeout(() => this.onShutdown(), 1200);
+    } else {
+      this.log({ tool: 'kill_switch', note: reason + ': cancelled' });
+      this.overlay?.cancel(reason, SHUTDOWN_WINDOW_MS);
+    }
   }
 
-  /** Clear a stop (the resume tool). Refused while the stop keys are still held, which would stop again at once. */
-  resume() {
-    if (!this.killed) return false;
-    if (chordDown(this.stopVks)) throw new ToolError(`${this.stopLabel} is still held down; release it, then call resume again.`);
-    this.killed = false;
-    this.killReason = '';
-    this.overlay?.resume();
-    this.log({ tool: 'kill_switch', note: 'resumed' });
-    return true;
-  }
-
+  /** Throws when the user pressed the stop chord since the current call was received. */
   checkKill() {
-    if (!this.killed && !this.heldKeys.has(this.stopVks[this.stopVks.length - 1]) && chordDown(this.stopVks)) this.trigger(this.stopLabel);
-    if (this.killed) {
-      throw new ToolError(`STOPPED BY THE USER (${this.stopLabel}). Stop all work now and do not retry; tell the user you were stopped. ` +
-        'Every action is refused until the user tells you to continue and you call the resume tool (or the server is restarted).');
+    this.pollChord();
+    const ctx = callContext.getStore();
+    if (ctx && ctx.epoch !== this.epoch) {
+      throw new ToolError(`CANCELLED BY THE USER (${this.stopLabel}). The action was interrupted. Stop what you were doing and tell the user; carry on only if they ask. ` +
+        `(Pressing ${this.stopLabel} again within ${SHUTDOWN_WINDOW_MS / 1000} s shuts the server down.)`);
     }
   }
 

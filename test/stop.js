@@ -64,18 +64,30 @@ try {
   w.keysUp([0x12, 0x87]);
   const res = await inflight;
   const took = performance.now() - t0;
-  check('running tool is aborted with an error', res.isError && /STOPPED BY THE USER/.test(res.text) && /Alt\+F24/.test(res.text), res.text.slice(0, 80));
-  check('abort is quick (not the full 6 s)', took < 1500, `${Math.round(took)} ms`);
-  const after = await call('list_windows');
-  check('later calls are refused', after.isError && /STOPPED BY THE USER/.test(after.text));
-  const click = await call('click', { space: 'screen', x: 800, y: 500 });
-  check('click is refused too', click.isError && !/corner/i.test(click.text) && /resume/.test(click.text));
-  const rs = await call('resume');
-  check('resume clears the stop', !rs.isError && /"resumed":true/.test(rs.text), rs.text);
+  check('running tool is cancelled with an error', res.isError && /CANCELLED BY THE USER/.test(res.text) && /Alt\+F24/.test(res.text), res.text.slice(0, 80));
+  check('cancel is quick (not the full 6 s)', took < 1500, `${Math.round(took)} ms`);
   const ok = await call('list_windows');
-  check('tools work again after resume', !ok.isError, ok.text.slice(0, 80));
-  const rs2 = await call('resume');
-  check('resume with no stop active is harmless', !rs2.isError && /"resumed":false/.test(rs2.text));
+  check('one press only cancels: the next call works, no resume needed', !ok.isError, ok.text.slice(0, 60));
+  const click = await call('click', { space: 'screen', x: 800, y: 500, durationMs: 150 });
+  check('a click works too after the cancel', !click.isError, click.text.slice(0, 60));
+
+  // a lone press followed by a long pause is a fresh first press, not a shutdown
+  await sleep(5500);
+  const inflight2 = call('wait', { ms: 3000 });
+  await sleep(400);
+  w.keysDown([0x12, 0x87]); await sleep(120); w.keysUp([0x12, 0x87]);
+  const res2 = await inflight2;
+  check('a press more than 5 s after the last one only cancels again', res2.isError && /CANCELLED/.test(res2.text));
+  check('server still alive', !(await call('list_windows')).isError);
+
+  // two quick presses: the second shuts the server down
+  await sleep(600);
+  w.keysDown([0x12, 0x87]); await sleep(120); w.keysUp([0x12, 0x87]);
+  await sleep(500);
+  w.keysDown([0x12, 0x87]); await sleep(120); w.keysUp([0x12, 0x87]);
+  await sleep(2500);
+  const gone = await Promise.race([call('list_windows').then((r) => (r.isError ? 'error' : 'alive'), () => 'closed'), sleep(4000).then(() => 'timeout')]);
+  check('two presses within 5 s shut the server down', gone !== 'alive', gone);
 } catch (e) {
   check('stop test ran to completion', false, e.message);
 } finally {
