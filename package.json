@@ -15,6 +15,7 @@
     "motion-test": "node test/motion.js",
     "stop-test": "node test/stop.js",
     "instances-test": "node test/instances.js",
+    "hook-test": "node test/hook-life.js",
     "auth-test": "node test/auth.js",
     "typing-test": "node test/typing.js"
   },

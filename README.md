@@ -117,7 +117,7 @@ Typical flow: `screenshot_screen` → read coordinates off the image → `click`
 
 ## Safety
 
-- **Emergency stop:** Alt+Esc is the only stop (there is no mouse-corner switch). Every action is refused and held keys and buttons are released, until the user tells the agent to continue and it calls `resume` (or the server restarts).
+- **Emergency stop:** Alt+Esc is the only stop (its keyboard hook is installed only while a tool runs and for 30 s after the last call) (there is no mouse-corner switch). Every action is refused and held keys and buttons are released, until the user tells the agent to continue and it calls `resume` (or the server restarts).
 - **Password fields:** `type_text` (and paste chords) are refused when the focused control is a password field (Win32 `ES_PASSWORD` and UI Automation `IsPassword`, which covers browser fields). If the check cannot run, the action is refused.
 - **No credentials:** the server never reads, stores or types saved passwords, and drives no password manager (default denylist). Log in yourself.
 - **Plain errors** for: foreground lock refused, window minimized / not capturable, elevated target (UIPI), locked screen, emergency stop, password not entered, denylisted program.

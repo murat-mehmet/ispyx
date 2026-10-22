@@ -22,7 +22,7 @@ if (process.platform !== 'win32') {
 
 const config = loadConfig();
 // Only the process that owns the pipe (see ipc.js) does the work; the others forward their tool calls to it.
-let guard, overlay, auth;
+let guard, overlay, auth, stopHook = null;
 let owner = null;
 const pipe = pipeName();
 
@@ -33,7 +33,7 @@ function initCore() {
   guard.overlay = overlay;
   auth = new Auth({ enabled: config.auth, ...(config.authFile ? { file: config.authFile } : {}) });
   guard.startWatching();
-  if (guard.stopIsDefault) installStopHotkey((reason) => guard.trigger(reason)); // the hook is Alt+Esc only
+  if (guard.stopIsDefault) stopHook = installStopHotkey((reason) => guard.trigger(reason)); // Alt+Esc only; installed while working
   guard.log({ tool: 'server_start', auth: config.auth, denylist: config.denylist, pid: process.pid });
 }
 
@@ -107,6 +107,8 @@ function action(name, handler, { session = true } = {}) {
   return async (args) => {
     const entry = { tool: name, args: redact(name, args) };
     const shown = !QUIET.has(name);
+    stopHook?.touch(); // keeps the Alt+Esc hook installed while working and for 30 s after the last call
+    const keepHook = stopHook && setInterval(() => stopHook.touch(), 10000);
     try {
       guard.checkKill();
       await auth.ensure();
@@ -125,6 +127,7 @@ function action(name, handler, { session = true } = {}) {
       const msg = e instanceof ToolError ? e.message : `Unexpected error: ${e.message}`;
       return { isError: true, content: [{ type: 'text', text: msg }] };
     } finally {
+      if (keepHook) { clearInterval(keepHook); stopHook.touch(); }
       if (shown && overlay.active) overlay.done();
     }
   };

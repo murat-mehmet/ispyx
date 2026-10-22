@@ -20,10 +20,16 @@ const LLKHF_ALTDOWN = 0x20;
 /** True while every key of the chord is down right now (used as a fallback; injected keys also count). */
 export const chordDown = (vks) => vks.every((vk) => (GetAsyncKeyState(vk) & 0x8000) !== 0);
 
-export function installStopHotkey(onStop) {
-  ensurePump();
+export const HOOK_LINGER_MS = 30000;
+
+/**
+ * Alt+Esc hook that exists only while the server is working: touch() installs it (if absent) and pushes the
+ * removal back HOOK_LINGER_MS, so idle time and the user's own typing never go through this process.
+ */
+export function installStopHotkey(onStop, lingerMs = HOOK_LINGER_MS) {
   let hook = 0;
   let swallowUp = false;
+  let timer = null;
   const proc = koffi.register((code, wp, lp) => {
     try {
       if (code === 0) {
@@ -47,7 +53,23 @@ export function installStopHotkey(onStop) {
     } catch { /* never let a hook error break the keyboard */ }
     return CallNextHookEx(hook, code, wp, lp);
   }, koffi.pointer(HookProc));
-  hook = SetWindowsHookExW(13, proc, 0, 0); // WH_KEYBOARD_LL
-  if (!hook) process.stderr.write('win-input-mcp: stop hotkey hook not installed; using polling only\n');
-  return () => hook && UnhookWindowsHookEx(hook);
+  const remove = () => {
+    timer = null;
+    if (hook) UnhookWindowsHookEx(hook);
+    hook = 0;
+  };
+  return {
+    touch() {
+      if (!hook) {
+        ensurePump();
+        hook = SetWindowsHookExW(13, proc, 0, 0); // WH_KEYBOARD_LL
+        if (!hook) process.stderr.write('win-input-mcp: stop hotkey hook not installed; using polling only\n');
+      }
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(remove, lingerMs);
+      timer.unref();
+    },
+    active: () => !!hook,
+    stop: remove,
+  };
 }
