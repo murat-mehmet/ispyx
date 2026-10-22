@@ -13,20 +13,62 @@ import { curvedPath, ease, randomDuration, typingDelays } from './motion.js';
 import { Overlay } from './overlay.js';
 import { installStopHotkey } from './hotkey.js';
 import { Auth } from './auth.js';
+import { pipeName, listenOwner, callOwner, OwnerGone } from './ipc.js';
 
 if (process.platform !== 'win32') {
   process.stderr.write('win-input-mcp only runs on Windows.\n');
   process.exit(1);
 }
 
-w.init();
 const config = loadConfig();
-const guard = new Guard(config);
-const overlay = new Overlay({ enabled: config.overlay, stopLabel: guard.stopLabel });
-guard.overlay = overlay;
-const auth = new Auth({ enabled: config.auth,...(config.authFile ? { file: config.authFile } : {}) });
-guard.startWatching();
-if (guard.stopIsDefault) installStopHotkey((reason) => guard.trigger(reason)); // the hook is Alt+Esc only
+// Only the process that owns the pipe (see ipc.js) does the work; the others forward their tool calls to it.
+let guard, overlay, auth;
+let owner = null;
+const pipe = pipeName();
+
+function initCore() {
+  w.init();
+  guard = new Guard(config);
+  overlay = new Overlay({ enabled: config.overlay, stopLabel: guard.stopLabel });
+  guard.overlay = overlay;
+  auth = new Auth({ enabled: config.auth, ...(config.authFile ? { file: config.authFile } : {}) });
+  guard.startWatching();
+  if (guard.stopIsDefault) installStopHotkey((reason) => guard.trigger(reason)); // the hook is Alt+Esc only
+  guard.log({ tool: 'server_start', auth: config.auth, denylist: config.denylist, pid: process.pid });
+}
+
+async function tryBecomeOwner() {
+  if (owner) return true;
+  owner = await listenOwner(pipe, runTool);
+  if (owner) initCore();
+  return !!owner;
+}
+
+const handlers = new Map();
+let chain = Promise.resolve();
+const UNQUEUED = new Set(['wait', 'resume']);
+/** Runs a tool here. Calls from all Claude instances take turns, so two of them never fight over the pointer. */
+function runTool(name, args) {
+  const h = handlers.get(name);
+  if (!h) throw new Error(`Unknown tool ${name}`);
+  if (UNQUEUED.has(name)) return h(args);
+  const p = chain.then(() => h(args));
+  chain = p.catch(() => {});
+  return p;
+}
+
+async function dispatch(name, args) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (owner) return runTool(name, args);
+    try {
+      return await callOwner(pipe, name, args);
+    } catch (e) {
+      if (!(e instanceof OwnerGone)) return { isError: true, content: [{ type: 'text', text: e.message }] };
+      await tryBecomeOwner(); // the owner is gone: take over
+    }
+  }
+  return { isError: true, content: [{ type: 'text', text: 'Could not reach or become the win-input-mcp server. Try again.' }] };
+}
 
 const target = {
   hwnd: z.number().int().optional().describe('Window handle from list_windows. Window-relative mode and focusing use it.'),
@@ -52,6 +94,13 @@ const text = (s) => ({ content: [{ type: 'text', text: s }] });
 const json = (o) => text(JSON.stringify(o));
 
 const server = new McpServer({ name: 'win-input-mcp', version: '2.0.0' });
+{
+  const register = server.registerTool.bind(server);
+  server.registerTool = (name, cfg, handler) => {
+    handlers.set(name, handler);
+    return register(name, cfg, (...a) => dispatch(name, cfg.inputSchema ? a[0] : {}));
+  };
+}
 
 /** Wraps a tool: kill switch + lock check before, JSONL log after, plain errors out. */
 function action(name, handler, { session = true } = {}) {
@@ -585,7 +634,13 @@ server.registerTool('set_clipboard', {
 
 // ---------------------------------------------------------------- run
 
+await tryBecomeOwner();
 await server.connect(new StdioServerTransport());
-guard.log({ tool: 'server_start', auth: config.auth, denylist: config.denylist, pid: process.pid });
-process.on('exit', () => guard.releaseAll());
-process.stdin.on('close', () => { guard.releaseAll(); process.exit(0); });
+process.on('exit', () => guard?.releaseAll());
+// When this Claude goes away, an owner that still serves other instances keeps running until the last one is gone.
+process.stdin.on('close', () => {
+  if (!owner || owner.clients() === 0) process.exit(0);
+  const t = setInterval(() => { if (owner.clients() === 0) process.exit(0); }, 2000);
+  t.unref?.();
+  guard.releaseAll();
+});

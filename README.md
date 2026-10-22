@@ -175,3 +175,7 @@ Opens a new Chrome window with a global middle-click on the taskbar button, then
 - scrolls the page down and up, then closes only the window it opened
 
 It never types into or clicks anything on Instagram (the only text typed is the two addresses; the test asserts that from the action log), never logs in, and never touches a cookie banner or Google account chooser (Escape dismisses a floating Google sign-in prompt, nothing is chosen). The screenshot is taken before that Escape, so it can show such a prompt; it stays local in `test/out/` (git-ignored).
+
+## Several Claude instances
+
+Every Claude instance starts its own `server.js`, but only one of them does the work. The first process listens on a named pipe (`\.\pipe\win-input-mcp-<user>-<hash of WIN_INPUT_* env>`) and owns the keyboard hook, banner, stop state and password unlock. The others stay normal MCP servers toward their own Claude and forward each tool call over the pipe, so nothing disconnects. Calls from all instances take turns (`wait` and `resume` excepted). If the owner dies, the next call from another instance takes over; if the owner's Claude closes, it keeps serving the others until they are gone. Servers started with different `WIN_INPUT_*` settings (tests) get their own pipe. `npm run instances-test` checks this.
