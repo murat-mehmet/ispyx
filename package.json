@@ -16,6 +16,7 @@
     "stop-test": "node test/stop.js",
     "instances-test": "node test/instances.js",
     "hook-test": "node test/hook-life.js",
+    "shutdown-test": "node test/shutdown-all.js",
     "auth-test": "node test/auth.js",
     "typing-test": "node test/typing.js"
   },

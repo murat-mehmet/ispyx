@@ -13,7 +13,7 @@ import { curvedPath, ease, randomDuration, typingDelays } from './motion.js';
 import { Overlay } from './overlay.js';
 import { installStopHotkey } from './hotkey.js';
 import { Auth } from './auth.js';
-import { pipeName, listenOwner, callOwner, OwnerGone } from './ipc.js';
+import { pipeName, listenOwner, callOwner, watchOwner, OwnerGone } from './ipc.js';
 
 if (process.platform !== 'win32') {
   process.stderr.write('win-input-mcp only runs on Windows.\n');
@@ -31,7 +31,8 @@ function initCore() {
   guard = new Guard(config);
   overlay = new Overlay({ enabled: config.overlay, stopLabel: guard.stopLabel });
   guard.overlay = overlay;
-  guard.onShutdown = () => process.exit(0);
+  // second stop press: order every other win-input-mcp server to exit, then leave
+  guard.onShutdown = () => { owner?.broadcastShutdown(); setTimeout(() => process.exit(0), 300); };
   auth = new Auth({ enabled: config.auth, ...(config.authFile ? { file: config.authFile } : {}) });
   guard.startWatching();
   if (guard.stopIsDefault) stopHook = installStopHotkey((reason) => guard.trigger(reason)); // Alt+Esc only; installed while working
@@ -612,6 +613,7 @@ server.registerTool('set_clipboard', {
 // ---------------------------------------------------------------- run
 
 await tryBecomeOwner();
+if (!owner) watchOwner(pipe, () => process.exit(0), () => !!owner);
 await server.connect(new StdioServerTransport());
 process.on('exit', () => guard?.releaseAll());
 // When this Claude goes away, an owner that still serves other instances keeps running until the last one is gone.

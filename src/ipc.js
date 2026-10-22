@@ -34,13 +34,15 @@ function lines(stream, onLine) {
 export function listenOwner(name, run) {
   return new Promise((resolve, reject) => {
     let clients = 0;
+    const watchers = new Set(); // other servers waiting for a shutdown order
     const srv = net.createServer((sock) => {
       clients++;
-      sock.on('close', () => { clients--; });
+      sock.on('close', () => { clients--; watchers.delete(sock); });
       sock.on('error', () => {});
       lines(sock, async (l) => {
         let req;
         try { req = JSON.parse(l); } catch { return; }
+        if (req.watch) { watchers.add(sock); return; }
         let reply;
         try { reply = { id: req.id, result: await run(req.name, req.args ?? {}) }; }
         catch (e) { reply = { id: req.id, error: e.message }; }
@@ -48,8 +50,30 @@ export function listenOwner(name, run) {
       });
     });
     srv.once('error', (e) => (e.code === 'EADDRINUSE' ? resolve(null) : reject(e)));
-    srv.listen(name, () => resolve({ close: () => srv.close(), clients: () => clients }));
+    srv.listen(name, () => resolve({
+      close: () => srv.close(),
+      clients: () => clients,
+      /** Tells every other server on this pipe to exit. */
+      broadcastShutdown: () => { for (const s of watchers) { try { s.write(JSON.stringify({ shutdown: true }) + '\n'); } catch { /* gone */ } } },
+    }));
   });
+}
+
+/**
+ * Keeps a connection to the owner open so it can order this server to exit (the owner's second stop press).
+ * Reconnects when the owner changes. Stops retrying once onShutdown ran or isOwner() is true.
+ */
+export function watchOwner(name, onShutdown, isOwner) {
+  const attempt = () => {
+    if (isOwner()) return;
+    const sock = net.connect(name);
+    sock.on('connect', () => sock.write(JSON.stringify({ watch: true }) + '\n'));
+    sock.on('error', () => {});
+    sock.on('close', () => { const t = setTimeout(attempt, 1000); t.unref(); });
+    lines(sock, (l) => { try { if (JSON.parse(l).shutdown) onShutdown(); } catch { /* ignore */ } });
+    sock.unref();
+  };
+  attempt();
 }
 
 export class OwnerGone extends Error {}
