@@ -155,7 +155,7 @@ final class LayerRegistry {
     static func cleanStaleFiles() {
         let dir = AppPaths.tempDir
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return }
-        for n in names where (n.hasPrefix("layer-") && n.hasSuffix(".bgra")) || (n.hasPrefix("mask-") && n.hasSuffix(".bin")) {
+        for n in names where (n.hasPrefix("layer-") && n.hasSuffix(".bgra")) || (n.hasPrefix("cap-") && n.hasSuffix(".bgra")) || (n.hasPrefix("mask-") && n.hasSuffix(".bin")) {
             unlink(dir + "/" + n)
         }
     }

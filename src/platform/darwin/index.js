@@ -81,10 +81,11 @@ function readCapture(r) {
   const need = r.width * r.height * 4;
   let data;
   try {
-    data = fs.readFileSync(r.file); // the app deletes the file
+    data = fs.readFileSync(r.file);
   } catch (e) {
     throw new Error(`Could not read the capture file from Ispyx (${e.code ?? e.message}).`);
   }
+  try { fs.unlinkSync(r.file); } catch { /* already gone */ }
   if (data.length < need) throw new Error(`The capture file is too short (${data.length} of ${need} bytes).`);
   return new Uint8Array(data.buffer, data.byteOffset, need);
 }
