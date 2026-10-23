@@ -10,6 +10,7 @@ export { ensurePump, pumpOnce } from './pump.js';
 
 export const name = 'win32';
 export const capabilities = { elevation: true };
+export const stopLabel = 'Alt+Esc';
 
 /** Where the password hash and other per-user state live. */
 export const dataDir = () => {

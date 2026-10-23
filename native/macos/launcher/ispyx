@@ -1,0 +1,27 @@
+#!/bin/sh
+# MCP server launcher inside Ispyx.app: Contents/Resources/ispyx.
+# An MCP client config only needs this path, e.g. /Applications/Ispyx.app/Contents/Resources/ispyx
+# (the Node side starts Ispyx.app itself if it is not running). stdin/stdout stay the MCP stdio channel.
+set -eu
+
+# resolve symlinks so the bundle is found even when started through a link
+SELF="$0"
+while [ -L "$SELF" ]; do
+  DIR="$(cd "$(dirname "$SELF")" && pwd)"
+  SELF="$(readlink "$SELF")"
+  case "$SELF" in
+    /*) ;;
+    *) SELF="$DIR/$SELF" ;;
+  esac
+done
+RES="$(cd "$(dirname "$SELF")" && pwd)"
+
+NODE="$RES/node/bin/node"
+ENTRY="$RES/core/src/macos-entry.js"
+
+if [ ! -x "$NODE" ] || [ ! -f "$ENTRY" ]; then
+  echo "ispyx: the bundled Node or server is missing in $RES (damaged Ispyx.app?)" >&2
+  exit 1
+fi
+
+exec "$NODE" "$ENTRY" "$@"

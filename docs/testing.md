@@ -1,6 +1,6 @@
 # Tests
 
-Most tests drive the real desktop of the machine they run on (Windows only). They use their own `ISPYX_*` (or legacy `WIN_INPUT_*`) settings, so they get their own named pipe and, where a stop key is pressed, their own chord (`alt+f24`); they never interfere with a server you are using.
+`npm run ipc-test` (unix-socket election/forwarding/shutdown; prints SKIP where unix sockets are unavailable), `npm run core-test` and `npm run darwin-test` need no desktop. Most other tests drive the real desktop of the machine they run on (Windows only). They use their own `ISPYX_*` (or legacy `WIN_INPUT_*`) settings, so they get their own named pipe and, where a stop key is pressed, their own chord (`alt+f24`); they never interfere with a server you are using.
 
 ```
 npm test               # unit checks (PNG, key parsing, password-field detection)

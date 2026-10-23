@@ -4,7 +4,7 @@ A local desktop-control [MCP](https://modelcontextprotocol.io) server. It lets a
 
 - Runs on your machine, talks to the MCP client over **stdio**, opens **no network port**.
 - Node 22+, `koffi` for the Windows API, `@modelcontextprotocol/sdk` for MCP.
-- Windows today; macOS is in development (see [Platform status](#platform-status)).
+- Windows today; macOS is in development and experimental (see [Platform status](#platform-status)).
 
 ## Features
 
@@ -12,7 +12,7 @@ A local desktop-control [MCP](https://modelcontextprotocol.io) server. It lets a
 - **Human-paced input.** The pointer glides along a gently curved path to each target, scrolling is smoothed, and typing goes one character at a time with natural pauses.
 - **On-screen feedback.** An eye opens and a scan line sweeps the captured area after a screenshot; clicks, drags, scrolls, key presses, typing and waits each get a small animation; `list_windows` sends out a sonar ping that lights up window frames. A banner shows while a tool runs. All of it is click-through and can be turned off.
 - **Safety.**
-  - **Alt+Esc** stops everything: one press cancels all running and queued calls, a second press within 5 s shuts the server down.
+  - **Alt+Esc** (Option+Esc on macOS) stops everything: one press cancels all running and queued calls, a second press within 5 s shuts the server down.
   - A **denylist** of programs that are never driven (password managers by default).
   - Refuses to type into **password fields**.
   - An optional **password gate** that asks you before the first tool call.
@@ -44,6 +44,8 @@ Claude Desktop and other MCP clients (JSON form; on Windows some clients need `c
 
 Requires Node.js 22 or newer.
 
+macOS (experimental): install `Ispyx.app` instead, which carries its own Node and needs nothing else. See [native/macos/README.md](native/macos/README.md).
+
 ## Configuration
 
 Settings are applied in this order, later wins: built-in defaults, `config.json` (in the package folder, or the file named by `ISPYX_CONFIG`), environment variables. See `config.example.json`.
@@ -51,10 +53,10 @@ Settings are applied in this order, later wins: built-in defaults, `config.json`
 | `config.json` key | Environment variable | Default | Meaning |
 | --- | --- | --- | --- |
 | (the file itself) | `ISPYX_CONFIG` | `config.json` in the package root | Path of a config file. |
-| `denylist` | `ISPYX_DENYLIST` (comma separated) | `keepass.exe`, `keepassxc.exe`, `1password.exe`, `bitwarden.exe` | Programs that are never driven or focused. |
-| `logPath` | `ISPYX_LOG` | `logs/actions.jsonl` | Action log (JSON lines). |
+| `denylist` | `ISPYX_DENYLIST` (comma separated) | `keepass.exe`, `keepassxc.exe`, `1password.exe`, `bitwarden.exe`; macOS: `1Password`, `Bitwarden`, `KeePassXC`, `Keychain Access`, `Enpass` (app names, case-insensitive) | Programs that are never driven or focused. |
+| `logPath` | `ISPYX_LOG` | `logs/actions.jsonl` (macOS: `~/Library/Application Support/Ispyx/logs/actions.jsonl`) | Action log (JSON lines). |
 | `auth` | `ISPYX_AUTH` (`0`/`1`) | `false` | Ask for a password before the first tool call. |
-| `authFile` | `ISPYX_AUTH_FILE` | `%APPDATA%\ispyx\auth.json` | Where the password hash is stored. |
+| `authFile` | `ISPYX_AUTH_FILE` | `%APPDATA%\ispyx\auth.json` (macOS: `~/Library/Application Support/Ispyx/auth.json`) | Where the password hash is stored. |
 | `overlay` | `ISPYX_OVERLAY` (`0`/`1`) | `true` | The "ispyx is working" banner. |
 | `animations` | `ISPYX_ANIMATIONS` (`0`/`1`) | `true` | The eye, scan and other effects. |
 | `typeSpeed` | `ISPYX_TYPE_SPEED` | `1` | Typing speed multiplier (2 = twice as fast, 0 = fixed 8 ms per character). |
@@ -90,7 +92,7 @@ Typical flow: `screenshot_screen`, read coordinates off the image, `click` (with
 
 ## Safety notes
 
-- **Alt+Esc** is the emergency stop. It is caught by a low-level keyboard hook, so it does not also cycle windows.
+- **Alt+Esc** (Option+Esc on macOS) is the emergency stop. It is caught by a low-level keyboard hook, so it does not also cycle windows.
 - **Elevated (administrator) windows cannot be controlled**: Windows ignores input from a normal process (UIPI). The server refuses with a plain message; it works if the server itself runs elevated. UAC prompts, the lock screen and Ctrl+Alt+Del run on the secure desktop where no input or capture is possible.
 - **Denylist.** Programs on the denylist are never focused, clicked or typed into, and show up as not allowed in `list_windows`. The default covers common password managers.
 - **No credentials.** The server never reads, stores or types saved passwords. Typing into password fields is refused.
@@ -102,7 +104,7 @@ Typical flow: `screenshot_screen`, read coordinates off the image, `click` (with
 | Platform | Status |
 | --- | --- |
 | Windows | Supported. |
-| macOS | In development, as a signed menu-bar app (`native/macos`) that the server talks to. |
+| macOS | In development, experimental. A signed menu-bar app (`native/macos`, `Ispyx.app`) does the OS work and bundles Node and this server; it has not been verified on a real Mac yet. There is no elevation concept; the stop key is Option+Esc. |
 | Linux | Not planned yet. |
 
 ## Development

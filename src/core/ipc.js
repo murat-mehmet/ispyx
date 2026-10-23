@@ -4,12 +4,30 @@
 import net from 'node:net';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 
-/** Same user + same ISPYX_* (or legacy WIN_INPUT_*) settings = same pipe, so test servers with their own env never meet the live one. */
+/**
+ * Same user + same ISPYX_* (or legacy WIN_INPUT_*) settings = same endpoint, so test servers with their own env never meet the live one.
+ * Windows: a named pipe. Elsewhere: a unix socket in the temp directory (per user on macOS), mode 0600.
+ */
 export function pipeName() {
   const env = Object.entries(process.env).filter(([k]) => k.startsWith('ISPYX_') || k.startsWith('WIN_INPUT_')).sort().map(([k, v]) => `${k}=${v}`).join('\n');
   const user = os.userInfo().username.replace(/[^\w.-]/g, '_');
-  return `\\\\.\\pipe\\ispyx-${user}-${crypto.createHash('sha1').update(env).digest('hex').slice(0, 8)}`;
+  const id = `ispyx-${user}-${crypto.createHash('sha1').update(env).digest('hex').slice(0, 8)}`;
+  if (process.platform === 'win32') return `\\\\.\\pipe\\${id}`;
+  return path.join(os.tmpdir(), `${id}.sock`); // keep short: unix socket paths are limited to ~104 bytes on macOS
+}
+
+const isPipe = (name) => name.startsWith('\\\\.\\pipe\\');
+
+/** True when something accepts connections at the unix socket path. */
+function answers(name) {
+  return new Promise((resolve) => {
+    const s = net.connect(name);
+    s.once('connect', () => { s.destroy(); resolve(true); });
+    s.once('error', () => { s.destroy(); resolve(false); });
+  });
 }
 
 /** Reads newline-delimited JSON from a stream. */
@@ -35,9 +53,11 @@ export function listenOwner(name, run) {
   return new Promise((resolve, reject) => {
     let clients = 0;
     const watchers = new Set(); // other servers waiting for a shutdown order
+    const socks = new Set();
     const srv = net.createServer((sock) => {
       clients++;
-      sock.on('close', () => { clients--; watchers.delete(sock); });
+      socks.add(sock);
+      sock.on('close', () => { clients--; watchers.delete(sock); socks.delete(sock); });
       sock.on('error', () => {});
       lines(sock, async (l) => {
         let req;
@@ -49,13 +69,27 @@ export function listenOwner(name, run) {
         if (!sock.destroyed) sock.write(JSON.stringify(reply) + '\n');
       });
     });
-    srv.once('error', (e) => (e.code === 'EADDRINUSE' ? resolve(null) : reject(e)));
-    srv.listen(name, () => resolve({
-      close: () => srv.close(),
-      clients: () => clients,
-      /** Tells every other server on this pipe to exit. */
-      broadcastShutdown: () => { for (const s of watchers) { try { s.write(JSON.stringify({ shutdown: true }) + '\n'); } catch { /* gone */ } } },
-    }));
+    let retried = false;
+    srv.on('error', async (e) => {
+      if (e.code !== 'EADDRINUSE') return reject(e);
+      // a unix socket file outlives a crashed owner: when nobody answers, remove it and try once more
+      if (!isPipe(name) && !retried && !(await answers(name))) {
+        retried = true;
+        try { fs.unlinkSync(name); } catch { /* already gone */ }
+        return srv.listen(name);
+      }
+      resolve(null);
+    });
+    srv.on('listening', () => {
+      if (!isPipe(name)) { try { fs.chmodSync(name, 0o600); } catch { /* best effort */ } }
+      resolve({
+        close: () => { srv.close(); for (const s of socks) s.destroy(); },
+        clients: () => clients,
+        /** Tells every other server on this pipe to exit. */
+        broadcastShutdown: () => { for (const s of watchers) { try { s.write(JSON.stringify({ shutdown: true }) + '\n'); } catch { /* gone */ } } },
+      });
+    });
+    srv.listen(name);
   });
 }
 

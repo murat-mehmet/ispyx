@@ -1,6 +1,6 @@
 # Behaviour details
 
-Detailed notes on how ispyx behaves on Windows. For install and configuration see the [README](../README.md).
+Detailed notes on how ispyx behaves on Windows. macOS support is in development and experimental: there the stop key is Option+Esc, there is no elevated-window concept, the denylist matches app names case-insensitively (default `1Password`, `Bitwarden`, `KeePassXC`, `Keychain Access`, `Enpass`), and state (password hash, action log, optional `config.json`) lives in `~/Library/Application Support/Ispyx/`. See [native/macos/README.md](../native/macos/README.md). For install and configuration see the [README](../README.md).
 
 ## Scope
 
@@ -92,7 +92,7 @@ The server runs per-monitor DPI aware (v2): screenshots, clicks and cursor readi
 
 ## Several clients, one worker
 
-Every MCP client starts its own `server.js`, but only one process does the work. The first one listens on a named pipe (`\\.\pipe\ispyx-<user>-<hash of the ISPYX_*/WIN_INPUT_* env>`) and owns the keyboard hook, banner, stop state and password unlock. The others stay normal MCP servers toward their own client and forward each tool call over the pipe, so nothing disconnects. Calls from all instances take turns (`wait` excepted). If the owner dies, the next call from another instance takes over; if the owner's client closes, it keeps serving the others until they are gone. Servers started with different `ISPYX_*` settings (tests) get their own pipe. `npm run instances-test` checks this.
+Every MCP client starts its own `server.js`, but only one process does the work. The first one listens on a named pipe (`\\.\pipe\ispyx-<user>-<hash of the ISPYX_*/WIN_INPUT_* env>`) and owns the keyboard hook, banner, stop state and password unlock. The others stay normal MCP servers toward their own client and forward each tool call over the pipe, so nothing disconnects. Calls from all instances take turns (`wait` excepted). If the owner dies, the next call from another instance takes over; if the owner's client closes, it keeps serving the others until they are gone. Servers started with different `ISPYX_*` settings (tests) get their own pipe. `npm run instances-test` checks this. On macOS (and other non-Windows systems) the endpoint is a unix socket `ispyx-<user>-<hash>.sock` in the temp directory, mode 0600; a socket file left by a crashed owner is removed when nothing answers on it. `npm run ipc-test` covers the election, forwarding and shutdown broadcast over a unix socket.
 
 ## Animations
 
