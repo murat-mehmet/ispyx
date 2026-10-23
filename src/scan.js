@@ -1,5 +1,5 @@
 // Screenshot animation: after a capture an eye opens at the top of the captured region, looks down and follows
-// a glowing scan line that sweeps the region from top to bottom. Two click-through, per-pixel-alpha windows;
+// a glowing green scan line that sweeps the region from top to bottom. Two click-through, per-pixel-alpha windows;
 // pixels are drawn in software into DIB sections, so nothing here depends on GDI+.
 import koffi from 'koffi';
 import { ensurePump } from './pump.js';
@@ -95,7 +95,7 @@ const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
 const mix = (a, b, t) => a + (b - a) * t;
 const smooth = (t) => t * t * (3 - 2 * t);
 
-/** The scan line: a bright violet edge at the bottom with a glow trailing above it. */
+/** The scan line: a bright green edge at the bottom with a glow trailing above it. */
 export function renderBand(px, width, height) {
   const edgeFade = Math.max(8, width * 0.06);
   for (let y = 0; y < height; y++) {
@@ -105,7 +105,7 @@ export function renderBand(px, width, height) {
       const e = smooth(clamp(Math.min(x, width - 1 - x) / edgeFade));
       const a = k * e;
       const core = d < 2 ? 0.75 : 0;
-      const r = mix(150, 255, core), g = mix(80, 255, core), b = 255;
+      const r = mix(40, 255, core), g = mix(230, 255, core), b = mix(110, 255, core);
       const i = (y * width + x) * 4;
       px[i] = b * a; px[i + 1] = g * a; px[i + 2] = r * a; px[i + 3] = a * 255;
     }
@@ -113,7 +113,7 @@ export function renderBand(px, width, height) {
 }
 
 /**
- * The eye: white eyeball, violet iris, dark pupil, a soft highlight. `open` 0..1 is the lid (0 = closed),
+ * The eye: white eyeball, green iris, dark pupil, a soft highlight. `open` 0..1 is the lid (0 = closed),
  * (gx, gy) in -1..1 is where it looks.
  */
 export function renderEye(px, size, open, gx, gy) {
@@ -134,18 +134,18 @@ export function renderEye(px, size, open, gx, gy) {
       if (a <= 0) { px[i] = px[i + 1] = px[i + 2] = px[i + 3] = 0; continue; }
       const n = Math.hypot(dx, dy) / R;
       const low = smooth(clamp((dy / R - 0.1) / 0.7));
-      let r = 254 - 30 * n ** 3 - 6 * low, g = 254 - 30 * n ** 3 - 20 * low, b = 255 - 24 * n ** 3;
+      let r = 254 - 30 * n ** 3 - 22 * low, g = 255 - 24 * n ** 3 - 4 * low, b = 254 - 30 * n ** 3 - 20 * low;
       const di = Math.hypot((x + 0.5 - ix) / rxI, (y + 0.5 - iy) / ryI);
       const ai = clamp((1 - di) * rxI);
       if (ai > 0) {
         const light = 0.22 * (((x + 0.5 - ix) / rxI) * 0.6 - ((y + 0.5 - iy) / ryI) * 0.6);
         const t = clamp(1 - di + light);
-        r = mix(r, mix(92, 196, t), ai); g = mix(g, mix(8, 104, t), ai); b = mix(b, mix(190, 255, t), ai);
+        r = mix(r, mix(8, 120, t), ai); g = mix(g, mix(120, 245, t), ai); b = mix(b, mix(30, 110, t), ai);
         const dp = Math.hypot((x + 0.5 - px0) / rxP, (y + 0.5 - py0) / ryP);
         const ap = clamp((1 - dp) * rxP);
         if (ap > 0) {
           const t2 = clamp(dp);
-          r = mix(r, mix(14, 52, t2), ap); g = mix(g, mix(4, 12, t2), ap); b = mix(b, mix(36, 96, t2), ap);
+          r = mix(r, mix(2, 10, t2), ap); g = mix(g, mix(18, 60, t2), ap); b = mix(b, mix(6, 24, t2), ap);
         }
       }
       const ah = clamp((1 - Math.hypot(x + 0.5 - hx, y + 0.5 - hy) / hr) * hr * 0.5) * 0.42;

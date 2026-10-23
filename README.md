@@ -180,4 +180,4 @@ Every Claude instance starts its own `server.js`, but only one of them does the 
 
 ## Screenshot animation
 
-After `screenshot_screen` / `screenshot_window` the result is returned at once, while an eye opens at the top of the captured region, looks down and follows a glowing scan line that sweeps the region top to bottom (about 1.5 s; two click-through layered windows drawn in software). The next tool call, from any instance, waits until it is over, so it never shows up in a later screenshot. Alt+Esc ends it early. Turn it off with `"animations": false` in `config.json` or `WIN_INPUT_ANIMATIONS=0`.
+After `screenshot_screen` / `screenshot_window` the result is returned at once, while an eye opens at the top of the captured region, looks down and follows a glowing green scan line that sweeps the region top to bottom (about 1.5 s; two click-through layered windows drawn in software). The next tool call, from any instance, waits until it is over, so it never shows up in a later screenshot. Alt+Esc ends it early. Turn it off with `"animations": false` in `config.json` or `WIN_INPUT_ANIMATIONS=0`.

@@ -31,11 +31,11 @@ try {
   check('screenshot result comes back at once (before the animation ends)', !shot.isError && back < SCAN_TOTAL_MS - 400, `${Math.round(back)} ms`);
   await sleep(500);
   check('animation windows are on screen during it', !!scanWindows());
-  // purple iris pixels somewhere in the eye area (top centre of the region)
+  // green iris pixels somewhere in the eye area (top centre of the region)
   const eyeCap = w.captureScreenRect({ left: region.x + 150, top: region.y + 20, width: 200, height: 180 });
   let purple = 0;
-  for (let i = 0; i < eyeCap.bits.length; i += 4) { const b = eyeCap.bits[i], g = eyeCap.bits[i + 1], r = eyeCap.bits[i + 2]; if (b > 150 && r > 80 && g < 130 && b - g > 90) purple++; }
-  check('the eye (violet iris) is drawn over the region', purple > 150, `${purple} violet pixels`);
+  for (let i = 0; i < eyeCap.bits.length; i += 4) { const b = eyeCap.bits[i], g = eyeCap.bits[i + 1], r = eyeCap.bits[i + 2]; if (g > 150 && g - r > 70 && g - b > 60) purple++; }
+  check('the eye (green iris) is drawn over the region', purple > 150, `${purple} green pixels`);
   const t1 = performance.now();
   const next = await call('cursor_position');
   const waited = (performance.now() - t0);
