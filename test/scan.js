@@ -171,15 +171,18 @@ try {
     const anim = new ScanAnimation({ enabled: true });
     const mon = w.listMonitors().find((m) => m.primary);
     const wins = w.listWindows().filter((q) => !q.minimized).map((q) => ({ rect: q.rect, allowed: true, elevated: q.elevated }));
+    const rt0 = performance.now();
     const run = anim.radar(wins, { left: mon.left, top: mon.top, width: mon.width, height: mon.height });
-    await sleep(850);
+    await sleep(1000);
     const cap = w.captureScreenRect({ left: mon.left, top: mon.top, width: mon.width, height: mon.height });
     let lit = 0;
     for (let i = 0; i < cap.bits.length; i += 4) { const b = cap.bits[i], g = cap.bits[i + 1], r = cap.bits[i + 2]; if (g > 200 && g - r > 90 && g - b > 60) lit++; }
     fs.writeFileSync('test/out/radar.png', shrinkToPng(cap, 1100).png);
     check('radar draws the sonar rings, the eye and window frames', !!scanWindows() && lit > 1500, `${lit} green pixels, ${wins.length} windows`);
     await run;
+    const RADAR_MS = performance.now() - rt0;
     check('radar is gone afterwards', !scanWindows());
+    check('radar runs smoothly (50+ frames per second)', anim.stats.frames / (RADAR_MS / 1000) > 50, `${anim.stats.frames} frames, draw ${(anim.stats.drawMs / anim.stats.frames).toFixed(1)} ms + present ${(anim.stats.presentMs / anim.stats.frames).toFixed(1)} ms per frame`);
   }
   // focus_window on the window that already has focus (changes nothing): green frame, short wait
   const fg = w.foregroundWindow();

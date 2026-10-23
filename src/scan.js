@@ -663,10 +663,9 @@ export class ScanAnimation {
   }
 
   /**
-   * list_windows: an eye opens in the middle of the monitor and sends out two sonar pings. Each ping is a ring
-   * that expands to the corners; a window's frame lights when the first ring reaches its nearest edge (so the
-   * windows light nearest first) and flashes again when the echo ring passes. Then everything fades. Green =
-   * usable, red = on the denylist, amber = elevated (cannot be controlled).
+   * list_windows: an eye opens in the middle of the monitor and sends out one sonar ping: a ring that expands to
+   * the corners. A window's frame lights when the ring reaches its nearest edge (so the nearest windows light
+   * first), then everything fades. Green = usable, red = on the denylist, amber = elevated (cannot be controlled).
    * `wins`: [{ rect, allowed, elevated }] in desktop pixels.
    */
   async radar(wins, area, cancelled = () => false) {
@@ -691,33 +690,32 @@ export class ScanAnimation {
       const reach = Math.hypot(cx, cy) + 60; // the rings run past the farthest corner
       frames = new Layer(W, H);
       eye = new Layer(esize, esize);
-      const OPEN = 300, PING = 1150, ECHO = 560, FADE = 420;
-      const END = OPEN + ECHO + PING;
-      const front = (t, start) => (t < start ? -1 : easeOut(clamp((t - start) / PING)) * reach); // ring radius, -1 = not yet
+      const OPEN = 300, PING = 1300, FADE = 450;
+      const END = OPEN + PING;
+      const front = (t) => (t < OPEN ? -1 : easeOut(clamp((t - OPEN) / PING)) * reach); // ring radius, -1 = not yet
       const t0 = performance.now();
+      const stats = (this.stats = { frames: 0, drawMs: 0, presentMs: 0 }); // frame cost, for tuning
       for (;;) {
         const t = performance.now() - t0;
         if (t >= END + FADE || cancelled()) break;
+        const tf = performance.now();
         const out = t > END ? 1 - ease(clamp((t - END) / FADE)) : 1;
-        const r1 = front(t, OPEN), r2 = front(t, OPEN + ECHO);
+        const r1 = front(t);
         frames.px.fill(0);
-        for (const [r, strength] of [[r1, 1], [r2, 0.75]]) {
-          if (r > 2 && r < reach) drawRing(frames.px, W, H, cx, cy, r, 70, strength * out * (1 - 0.55 * (r / reach)));
-        }
+        if (r1 > 2 && r1 < reach) drawRing(frames.px, W, H, cx, cy, r1, 70, out * (1 - 0.5 * (r1 / reach)));
         for (const q of list) {
           if (r1 < q.dist) continue; // the first ring has not got there
-          const since1 = (r1 - q.dist) / reach * PING; // roughly how long ago the first ring passed
-          const echo = r2 >= q.dist ? (r2 - q.dist) / reach * PING : -1;
-          const flash = (since1 < 160) || (echo >= 0 && echo < 160);
-          const a = out * (echo >= 0 ? 1 : 0.78);
-          drawBorder(frames.px, W, H, q.x0, q.y0, q.x1, q.y1, q.rgb, a, flash ? 5 : 3);
+          const since = (r1 - q.dist) / reach * PING; // roughly how long ago the ring passed
+          drawBorder(frames.px, W, H, q.x0, q.y0, q.x1, q.y1, q.rgb, out, since < 170 ? 5 : 3);
         }
+        const td = performance.now();
         frames.present(area.left, area.top, 255);
+        stats.presentMs += performance.now() - td; stats.drawMs += td - tf; stats.frames++;
         const open = t < OPEN ? ease(t / OPEN) : t > END ? 1 - ease(clamp((t - END) / FADE)) : 1;
-        const pulse = Math.max(0, 1 - Math.abs(t - OPEN - 80) / 260, 1 - Math.abs(t - OPEN - ECHO - 80) / 260); // the pupil flares at each ping
+        const pulse = Math.max(0, 1 - Math.abs(t - OPEN - 80) / 260); // the pupil flares as the ping leaves
         renderEye(eye.px, esize, open, 0, 0.15, pulse);
         eye.present(area.left + cx - esize / 2, area.top + cy - esize / 2, 255 * Math.min(ease(clamp(t / OPEN)), out));
-        await new Promise((r) => setTimeout(r, 24));
+        await new Promise((r) => setTimeout(r, Math.max(1, 16 - (performance.now() - tf))));
       }
     } catch (e) {
       process.stderr.write(`win-input-mcp: window scan effect failed (${e.message})\n`);
