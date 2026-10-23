@@ -12,8 +12,11 @@ export class ToolError extends Error {}
 
 const DEFAULTS = {
   // acts anywhere on the desktop; only the denylist (password managers) is refused
-  denylist: ['keepass.exe', 'keepassxc.exe', '1password.exe', 'bitwarden.exe'],
-  logPath: path.join(ROOT, 'logs', 'actions.jsonl'),
+  denylist: w.name === 'darwin'
+    ? ['1password', 'bitwarden', 'keepassxc', 'keychain access', 'enpass']
+    : ['keepass.exe', 'keepassxc.exe', '1password.exe', 'bitwarden.exe'],
+  // inside Ispyx.app the source tree is read-only and signed: keep the log in the per-user data directory there
+  logPath: w.name === 'darwin' ? path.join(w.dataDir(), 'logs', 'actions.jsonl') : path.join(ROOT, 'logs', 'actions.jsonl'),
   stopChord: 'alt+esc', // emergency stop keys (env WIN_INPUT_STOP_CHORD, meant for tests)
   overlay: true, // banner on screen while a tool runs
   animations: true, // eye + scan line after a screenshot (the next call waits for it)
@@ -42,7 +45,9 @@ export function env(name, source = process.env) {
 export function loadConfig(source = process.env) {
   const e = (name) => env(name, source);
   let cfg = { ...DEFAULTS };
-  const file = e('CONFIG') || path.join(ROOT, 'config.json');
+  // macOS: the app bundle is read-only, so the config lives in ~/Library/Application Support/Ispyx/config.json
+  const userCfg = w.name === 'darwin' ? path.join(w.dataDir(), 'config.json') : null;
+  const file = e('CONFIG') || (userCfg && fs.existsSync(userCfg) ? userCfg : path.join(ROOT, 'config.json'));
   if (fs.existsSync(file)) {
     try {
       cfg = { ...cfg, ...JSON.parse(fs.readFileSync(file, 'utf8')) };
@@ -76,8 +81,9 @@ export class Guard {
     this.chordSeen = false;
     this.onShutdown = () => process.exit(0);
     this.stopVks = parseChord(config.stopChord);
-    this.stopLabel = config.stopChord.split('+').map((s) => s[0].toUpperCase() + s.slice(1)).join('+');
     this.stopIsDefault = config.stopChord === 'alt+esc';
+    // the default chord is shown with the platform's own name (Alt+Esc / Option+Esc)
+    this.stopLabel = this.stopIsDefault ? (w.stopLabel ?? 'Alt+Esc') : config.stopChord.split('+').map((s) => s[0].toUpperCase() + s.slice(1)).join('+');
     this.overlay = null;
     this.lastWindow = 0;
     this.shots = new Map(); // hwnd -> { scale, ox, oy } of the last window screenshot (ox/oy: crop origin in window pixels)
@@ -137,7 +143,11 @@ export class Guard {
   }
 
   denied(win) {
-    return !!win.process && this.config.denylist.includes(win.process);
+    if (!win.process) return false;
+    if (w.name !== 'darwin') return this.config.denylist.includes(win.process);
+    // macOS: app names ("1Password") match case-insensitively, also helpers like "1Password Mini"
+    const p = win.process.toLowerCase();
+    return this.config.denylist.some((d) => p === d || p.startsWith(d + ' '));
   }
 
   /** Release anything this server still holds down (kill switch, shutdown, errors). */
@@ -153,12 +163,12 @@ export class Guard {
   /** Throws a plain error unless the window may be acted on. */
   assertUsable(win, { needVisible = true } = {}) {
     if (!win.process) {
-      throw new ToolError(`Cannot identify the program that owns "${win.title}"; it may be elevated. Refused.`);
+      throw new ToolError(`Cannot identify the program that owns "${win.title}"${w.capabilities?.elevation === false ? '' : '; it may be elevated'}. Refused.`);
     }
     if (this.denied(win)) {
       throw new ToolError(`Refused: "${win.title}" belongs to ${win.process}, which is on the denylist.`);
     }
-    if (win.elevated && !w.selfIsElevated()) {
+    if (w.capabilities?.elevation !== false && win.elevated && !w.selfIsElevated()) {
       throw new ToolError(`"${win.title}" is running as administrator, and Windows blocks input from a normal program to an elevated window. Run it without elevation, or start this server elevated.`);
     }
     if (needVisible && win.minimized) {
@@ -238,7 +248,7 @@ export class Guard {
     if (this.denied(win)) this.assertUsable(win, { needVisible: false });
     const ok = await w.bringToForeground(win.hwnd);
     if (!ok) {
-      throw new ToolError(`Windows refused to bring "${win.title}" to the front (foreground lock). Click the window yourself once, then retry.`);
+      throw new ToolError(`${w.name === 'darwin' ? 'macOS' : 'Windows'} refused to bring "${win.title}" to the front${w.name === 'darwin' ? '' : ' (foreground lock)'}. Click the window yourself once, then retry.`);
     }
     this.lastWindow = win.hwnd;
   }

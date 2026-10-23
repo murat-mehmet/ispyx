@@ -5,9 +5,45 @@ window lists, screenshots, the clipboard, the stop hotkey, and the on-screen eff
 The Node side (`src/platform/darwin/`) talks to it over a unix socket; the protocol is in
 `src/platform/darwin/PROTOCOL.md`.
 
-Requires macOS 13 or later, Apple Silicon, and the Xcode command line tools (Swift 5.9).
+Requires macOS 13 or later and Apple Silicon. Status: experimental, not yet verified on a real Mac.
 
-## Build and run
+Ispyx.app also carries everything the MCP server needs (its own Node 22+, the server code and its
+dependencies in `Contents/Resources/`), so users install nothing else.
+
+## Install (users)
+
+1. Drag `Ispyx.app` to `/Applications` and open it once (a menu-bar icon appears).
+2. Grant the two permissions it asks for: **Accessibility** and **Screen Recording**
+   (System Settings > Privacy & Security).
+3. Register the MCP server with your client.
+
+Claude Code:
+
+```sh
+claude mcp add ispyx --scope user -- /Applications/Ispyx.app/Contents/Resources/ispyx
+```
+
+Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "ispyx": {
+      "command": "/Applications/Ispyx.app/Contents/Resources/ispyx"
+    }
+  }
+}
+```
+
+The `ispyx` launcher runs the bundled Node on `Contents/Resources/core/src/macos-entry.js`. The emergency stop key
+is **Option+Esc**. The action log and `config.json` (optional) live in
+`~/Library/Application Support/Ispyx/` (the app bundle is read-only).
+
+## Build and run (developers)
+
+Building must happen on an Apple Silicon Mac with the Xcode command line tools (Swift 5.9), Node 22+ (the official
+arm64 build from nodejs.org; Homebrew's Node is not self-contained and is refused; set `NODE_BIN=/path/to/node`
+to pick another) and network access (`npm ci` downloads koffi's darwin-arm64 prebuilt).
 
 ```sh
 cd native/macos
@@ -25,6 +61,12 @@ NOTARY_PROFILE=ispyx-notary \
 
 `NOTARY_PROFILE` is a keychain profile made once with `xcrun notarytool store-credentials`. The signing,
 notarisation and dmg steps are marked in `build.sh` (`SIGNING STEP`, `NOTARISATION STEP`, `DMG STEP`).
+Signing is innermost first with the hardened runtime: koffi's `.node` files, the bundled `node` binary (with
+`node.entitlements`: JIT, unsigned executable memory, library validation off), the app's main executable, then the
+app (`Ispyx/Resources/Ispyx.entitlements`). Without `SIGN_IDENTITY` everything is ad-hoc signed.
+
+Bundle layout added by `build.sh`: `Contents/Resources/node/bin/node`, `Contents/Resources/core/` (`src/`,
+`package.json`, production `node_modules/`) and `Contents/Resources/ispyx` (the launcher, `launcher/ispyx`).
 The bundle id `com.ispyx.app` in `Ispyx/Resources/Info.plist` is a placeholder. An app icon goes in
 `Ispyx/Resources/Ispyx.icns` (optional for now).
 

@@ -6,5 +6,13 @@
          NO App Sandbox: the app must post input events and capture other apps' windows. -->
     <key>com.apple.security.automation.apple-events</key>
     <true/>
+    <!-- The bundled Node runs as a child process with its own entitlements (../../node.entitlements). These
+         are kept on the app as well so a helper that loads JIT or unsigned code inherits a consistent policy. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
 </dict>
 </plist>

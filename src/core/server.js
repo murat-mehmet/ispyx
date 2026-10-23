@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// ispyx: local Windows desktop-control MCP server. stdio only; opens no network port.
+// ispyx: local desktop-control MCP server (Windows; macOS in development). stdio only; opens no network port.
 import fs from 'node:fs';
 import { spawn } from 'node:child_process';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -32,7 +32,7 @@ function initCore() {
   guard.onShutdown = () => { owner?.broadcastShutdown(); setTimeout(() => process.exit(0), 300); };
   auth = new Auth({ enabled: config.auth, ...(config.authFile ? { file: config.authFile } : {}) });
   guard.startWatching();
-  if (guard.stopIsDefault) stopHook = installStopHotkey((reason) => guard.trigger(reason)); // Alt+Esc only; installed while working
+  if (guard.stopIsDefault) stopHook = installStopHotkey((reason) => guard.trigger(reason)); // default stop chord only (Alt+Esc / Option+Esc); installed while working
   guard.log({ tool: 'server_start', auth: config.auth, denylist: config.denylist, pid: process.pid });
 }
 
@@ -183,7 +183,7 @@ const MIN_GLIDE_MS = 120; // the pointer never teleports, whatever durationMs sa
 const motion = {
   durationMs: z.number().int().min(0).max(5000).optional().describe(`Glide time, at least ${MIN_GLIDE_MS} ms; default random 300-1000 ms. The pointer never jumps.`),
 };
-const MOD_VK = { ctrl: 0x11, shift: 0x10, alt: 0x12, win: 0x5b };
+const MOD_KEY = (m) => w.parseChord(m)[0]; // platform key code of a modifier name (win = Windows key / Command)
 
 const text = (s) => ({ content: [{ type: 'text', text: s }] });
 const json = (o) => text(JSON.stringify(o));
@@ -202,7 +202,7 @@ function action(name, handler, { session = true } = {}) {
   return async (args) => {
     const entry = { tool: name, args: redact(name, args) };
     const shown = !QUIET.has(name);
-    stopHook?.touch(); // keeps the Alt+Esc hook installed while working and for 30 s after the last call
+    stopHook?.touch(); // keeps the stop-chord hook installed while working and for 30 s after the last call
     const keepHook = stopHook && setInterval(() => stopHook.touch(), 10000);
     try {
       guard.checkKill();
@@ -332,7 +332,7 @@ async function smoothWheel(vert, horiz, args) {
 
 /** Hold modifier keys for the duration of fn. */
 async function withModifiers(mods, fn) {
-  const vks = (mods ?? []).map((m) => MOD_VK[m]);
+  const vks = (mods ?? []).map(MOD_KEY);
   if (vks.length) w.keysDown(vks);
   try {
     return await fn();
@@ -344,7 +344,7 @@ async function withModifiers(mods, fn) {
 // ---------------------------------------------------------------- tools
 
 server.registerTool('list_windows', {
-  description: 'List visible top-level windows with handle, title, process and screen rectangle, including the taskbar (Shell_TrayWnd). Use includeUntitled for every visible top-level window.',
+  description: `List visible top-level windows with handle, title, process and screen rectangle, ${w.name !== 'darwin' ? 'including the taskbar (Shell_TrayWnd). ' : ''}Use includeUntitled for every visible top-level window.`,
   inputSchema: { includeUntitled: z.boolean().default(false) },
 }, action('list_windows', async (args) => {
   const list = w.listWindows({ includeUntitled: !!args.includeUntitled }).map((x) => ({
@@ -697,6 +697,17 @@ server.registerTool('get_clipboard', {
 
 function setImageClipboard(imagePath) {
   return new Promise((resolve, reject) => {
+    if (w.name === 'darwin') {
+      const ext = imagePath.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+      const cls = { png: 'PNGf', jpg: 'JPEG', jpeg: 'JPEG', gif: 'GIFf', tif: 'TIFF', tiff: 'TIFF' }[ext];
+      if (!cls) return reject(new ToolError('Could not load that image onto the clipboard: on macOS use a PNG, JPEG, GIF or TIFF file.'));
+      const osa = spawn('osascript', ['-e', 'on run argv', '-e', `set the clipboard to (read (POSIX file (item 1 of argv)) as «class ${cls}»)`, '-e', 'end run', imagePath], { stdio: ['ignore', 'ignore', 'pipe'] });
+      let err = '';
+      osa.stderr.on('data', (d) => (err += d));
+      osa.on('error', reject);
+      osa.on('exit', (code) => (code === 0 ? resolve() : reject(new ToolError(`Could not load that image onto the clipboard: ${err.trim().split('\n')[0] || 'unsupported file'}`))));
+      return;
+    }
     const script = "Add-Type -AssemblyName System.Windows.Forms,System.Drawing;$i=[System.Drawing.Image]::FromFile($env:ISPYX_IMG);[System.Windows.Forms.Clipboard]::SetImage($i);$i.Dispose()";
     const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-STA', '-Command', script], {
       env: { ...process.env, ISPYX_IMG: imagePath }, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'],
