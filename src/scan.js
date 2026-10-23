@@ -169,28 +169,32 @@ export function renderEye(px, size, open, gx, gy, glow = 0) {
 }
 
 /**
- * The scanner cone: light opening from the pupil (top centre of the buffer) towards the bottom, fading with
- * distance, with brighter rims and faint horizontal striations. A row's width grows linearly, reaching the full
- * buffer width at the last row, so showing only the first d rows gives the cone as it is d pixels from the eye.
+ * The scanner light: a triangle from the pupil (ax, ay) to the scan line, which runs from x1 to x2 at height ey
+ * (all in buffer pixels). Brighter towards the line, bright rims along the two edges, faint horizontal striations.
+ * The buffer is cleared first.
  */
-export function renderCone(px, width, height, flip = false) {
+export function drawWedge(px, width, height, ax, ay, x1, x2, ey) {
   px.fill(0, 0, width * height * 4);
-  for (let row = 0; row < height; row++) {
-    const y = flip ? height - 1 - row : row; // flipped: the apex is the bottom row
-    const v = y / height;
-    const half = Math.max(1.5, (width / 2) * v);
-    const x0 = Math.max(0, Math.floor(width / 2 - half - 1)), x1 = Math.min(width - 1, Math.ceil(width / 2 + half + 1));
-    const stripe = 0.86 + 0.14 * Math.sin(row * 0.7);
-    for (let x = x0; x <= x1; x++) {
-      const dx = Math.abs(x + 0.5 - width / 2);
-      const u = dx / half; // 0 at the axis, 1 at the rim
-      const inside = clamp(half - dx + 0.5); // anti-aliased rim
-      const body = 0.20 * (1 - 0.5 * v) * (1 - 0.55 * smooth(clamp(u)));
-      const rim = 0.55 * Math.exp(-(((half - dx) / 2.2) ** 2)) * (1 - 0.4 * v);
-      const axis = 0.35 * Math.exp(-((dx / 3) ** 2)) * (1 - v);
-      const a = clamp((body * stripe + rim + axis) * inside);
-      const i = (row * width + x) * 4;
-      px[i] = 110 * a; px[i + 1] = 255 * a; px[i + 2] = 60 * a; px[i + 3] = a * 255;
+  const span = ey - ay;
+  if (Math.abs(span) < 2) return;
+  const y0 = Math.max(0, Math.ceil(Math.min(ay, ey))), y1 = Math.min(height - 1, Math.floor(Math.max(ay, ey)));
+  for (let y = y0; y <= y1; y++) {
+    const sn = (y + 0.5 - ay) / span; // 0 at the pupil, 1 at the line
+    if (sn <= 0) continue;
+    const xl = ax + (x1 - ax) * sn, xr = ax + (x2 - ax) * sn;
+    const wd = xr - xl;
+    if (wd < 1) continue;
+    const stripe = 0.86 + 0.14 * Math.sin(y * 0.7);
+    const gain = 0.08 + 0.2 * sn;
+    const xs = Math.max(0, Math.floor(xl - 1)), xe = Math.min(width - 1, Math.ceil(xr + 1));
+    for (let x = xs; x <= xe; x++) {
+      const e = Math.min(x + 0.5 - xl, xr - (x + 0.5)); // distance to the nearest rim
+      const inside = clamp(e + 0.5);
+      if (inside <= 0) continue;
+      const rim = 0.55 * Math.exp(-((e / 2.2) ** 2)) * (0.4 + 0.6 * sn);
+      const a = clamp((gain * stripe + rim) * inside);
+      const i = (y * width + x) * 4;
+      px[i] = 60 * a; px[i + 1] = 255 * a; px[i + 2] = 110 * a; px[i + 3] = a * 255;
     }
   }
 }
@@ -198,6 +202,8 @@ export function renderCone(px, width, height, flip = false) {
 const ease = (t) => t * t * (3 - 2 * t);
 const T_OPEN = 280, T_SCAN = 1100, T_CLOSE = 320;
 export const SCAN_TOTAL_MS = T_OPEN + T_SCAN + T_CLOSE;
+
+let flip = false; // alternates the side of the eye between screenshots
 
 export class ScanAnimation {
   constructor({ enabled = true } = {}) {
@@ -210,24 +216,28 @@ export class ScanAnimation {
    */
   async play(rect, cancelled = () => false) {
     if (!this.enabled) return;
-    let coneDown = null, coneUp = null, band = null, eye = null;
+    let wedge = null, band = null, eye = null;
     try {
       ensurePump();
       const size = Math.round(clamp(Math.min(rect.width, rect.height) * 0.3, 56, 150));
       const bandH = 56;
-      // the eye floats in the middle of the region; the scan line goes from its top edge to its bottom edge
-      const ex = rect.left + (rect.width - size) / 2;
-      const ey = rect.top + (rect.height - size) / 2;
-      const spread = Math.max(40, rect.width);
-      const midY = rect.top + rect.height / 2;
-      const upReach = Math.max(8, Math.round(midY - rect.top)), downReach = Math.max(8, Math.round(rect.top + rect.height - midY));
-      coneDown = new Layer(spread, downReach);
-      coneUp = new Layer(spread, upReach);
-      renderCone(coneDown.px, coneDown.width, coneDown.height);
-      renderCone(coneUp.px, coneUp.width, coneUp.height, true);
-      band = new Layer(spread, bandH);
+      // the eye floats beside the region (alternating sides; the side with more room if only one fits) and looks at it
+      const v = w.virtualScreen();
+      const gap = 18;
+      const roomL = rect.left - v.x, roomR = v.x + v.width - (rect.left + rect.width);
+      const fitsL = roomL >= size + gap, fitsR = roomR >= size + gap;
+      const left = fitsL && fitsR ? (flip = !flip) : fitsL || (!fitsR && roomL >= roomR);
+      const ex = left ? Math.max(v.x, rect.left - size - gap) : Math.min(v.x + v.width - size, rect.left + rect.width + gap);
+      const ey = clamp(rect.top + (rect.height - size) / 2, v.y, v.y + v.height - size);
+      const gx = left ? 0.95 : -0.95; // pupil towards the region
+      const pad = 4;
+      const lx = Math.floor(Math.min(ex, rect.left) - pad), rx = Math.ceil(Math.max(ex + size, rect.left + rect.width) + pad);
+      const ty = Math.floor(Math.min(ey, rect.top) - pad), by = Math.ceil(Math.max(ey + size, rect.top + rect.height) + pad);
+      wedge = new Layer(rx - lx, by - ty);
+      band = new Layer(Math.max(40, rect.width), bandH);
       renderBand(band.px, band.width, bandH);
       eye = new Layer(size, size);
+      const midY = rect.top + rect.height / 2;
       const t0 = performance.now();
       for (;;) {
         const t = performance.now() - t0;
@@ -237,27 +247,19 @@ export class ScanAnimation {
         else if (t < T_OPEN + T_SCAN) { open = 1; fade = 1; p = ease((t - T_OPEN) / T_SCAN); }
         else { const k = (t - T_OPEN - T_SCAN) / T_CLOSE; open = 1 - ease(k); fade = 1 - k; p = 1; }
         const edge = rect.top + p * rect.height; // the scan line (its leading edge is the bottom)
-        // the eye looks at the line: up at the start, down at the end
-        const gy = p > 0 ? clamp((edge - midY) / (rect.height / 2), -1, 1) * 0.95 : -0.2;
+        // the pupil goes from upper right to lower right (mirrored when the eye is on the right) with the line
+        const gy = (p > 0 ? clamp((edge - midY) / (rect.height / 2), -1, 1) : -1) * 0.85;
         const charge = p > 0 ? 1 : clamp((t - T_OPEN * 0.6) / (T_OPEN * 0.4)); // pupil glows just before the scan
-        renderEye(eye.px, size, open, 0, gy, charge);
+        renderEye(eye.px, size, open, gx, gy, charge);
         const live = Math.min(1, p * 10, (1 - p) * 6);
         if (p > 0 && p < 1) {
-          const pupil = pupilPos(size, 0, gy);
-          const cx = ex + pupil.x, cy = ey + pupil.y; // the light starts at the pupil
-          const dist = edge - cy;
-          const depth = Math.abs(dist);
-          if (depth > 2 && dist > 0) {
-            coneUp.present(0, 0, 0, 1);
-            coneDown.present(cx - spread / 2, cy, 255 * live, Math.min(depth, coneDown.height));
-          } else if (depth > 2) {
-            coneDown.present(0, 0, 0, 1);
-            const d = Math.min(depth, coneUp.height);
-            coneUp.present(cx - spread / 2, cy - d, 255 * live, d, spread, coneUp.height - d);
-          }
+          const pupil = pupilPos(size, gx, gy);
+          drawWedge(wedge.px, wedge.width, wedge.height, ex + pupil.x - lx, ey + pupil.y - ty, rect.left - lx, rect.left + rect.width - lx, edge - ty);
+          wedge.present(lx, ty, 255 * live);
           band.present(rect.left + (rect.width - band.width) / 2, edge - bandH, 255 * live);
-        } else if (coneDown.shown) {
-          for (const l of [coneDown, coneUp, band]) l.present(0, 0, 0, 1);
+        } else if (wedge.shown) {
+          wedge.present(lx, ty, 0, 1);
+          band.present(rect.left, rect.top, 0, 1);
         }
         eye.present(ex, ey, 255 * fade);
         await new Promise((r) => setTimeout(r, 16));
@@ -265,8 +267,7 @@ export class ScanAnimation {
     } catch (e) {
       process.stderr.write(`win-input-mcp: scan animation failed (${e.message})\n`);
     } finally {
-      coneDown?.destroy();
-      coneUp?.destroy();
+      wedge?.destroy();
       band?.destroy();
       eye?.destroy();
     }
