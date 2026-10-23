@@ -68,6 +68,15 @@ function playRipple(p, button, rings) {
   const run = scan.ripple({ x: p.sx, y: p.sy }, button, rings, () => guard.epoch !== epoch).finally(() => effects.delete(run));
   effects.add(run);
 }
+/** drag: ring at the start and a trail behind the pointer; the returned function ends it (button released). */
+function playTrail(a, z, button) {
+  const epoch = guard.epoch;
+  let stop;
+  const stopped = new Promise((r) => { stop = r; });
+  const run = scan.trail({ x: a.sx, y: a.sy }, { left: Math.min(a.sx, z.sx), top: Math.min(a.sy, z.sy), right: Math.max(a.sx, z.sx), bottom: Math.max(a.sy, z.sy) }, stopped, () => guard.epoch !== epoch, button).finally(() => effects.delete(run));
+  effects.add(run);
+  return stop;
+}
 /** A screenshot must not catch a running effect. */
 async function waitForEffects() {
   while (effects.size) await Promise.all([...effects]);
@@ -462,6 +471,7 @@ server.registerTool('drag', {
     await w.sleep(40);
     w.mouseDown(b);
     guard.heldButtons.add(b);
+    const stopTrail = playTrail(a, z2, b);
     try {
       await w.sleep(40);
       await glide(z2, args);
@@ -469,6 +479,7 @@ server.registerTool('drag', {
     } finally {
       w.mouseUp(b);
       guard.heldButtons.delete(b);
+      stopTrail();
     }
   });
   return json({ ok: true, from: { x: a.sx, y: a.sy }, to: { x: z2.sx, y: z2.sy } });

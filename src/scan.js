@@ -271,6 +271,43 @@ export function renderRipple(px, size, t, rings, rgb) {
   }
 }
 
+const TRAIL_LIFE_MS = 750, TRAIL_FADE_MS = 320;
+
+/** Draws a thick soft line segment into a premultiplied buffer, keeping the stronger alpha where strokes overlap. */
+function stroke(px, width, height, x0, y0, x1, y1, radius, rgb, alpha) {
+  const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0)));
+  const R = Math.ceil(radius + 1);
+  for (let s = 0; s <= n; s++) {
+    const cx = x0 + ((x1 - x0) * s) / n, cy = y0 + ((y1 - y0) * s) / n;
+    const xa = Math.max(0, Math.floor(cx - R)), xb = Math.min(width - 1, Math.ceil(cx + R));
+    const ya = Math.max(0, Math.floor(cy - R)), yb = Math.min(height - 1, Math.ceil(cy + R));
+    for (let y = ya; y <= yb; y++) {
+      for (let x = xa; x <= xb; x++) {
+        const a = clamp(radius + 0.5 - Math.hypot(x + 0.5 - cx, y + 0.5 - cy)) * alpha;
+        const i = (y * width + x) * 4;
+        if (a * 255 <= px[i + 3]) continue;
+        px[i] = rgb[2] * a; px[i + 1] = rgb[1] * a; px[i + 2] = rgb[0] * a; px[i + 3] = a * 255;
+      }
+    }
+  }
+}
+
+/** The start marker of a drag: dark ring, bright ring and a dot. */
+function marker(px, width, height, cx, cy, rgb) {
+  for (let y = Math.max(0, Math.floor(cy - 16)); y <= Math.min(height - 1, Math.ceil(cy + 16)); y++) {
+    for (let x = Math.max(0, Math.floor(cx - 16)); x <= Math.min(width - 1, Math.ceil(cx + 16)); x++) {
+      const r = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+      const dark = clamp(2.2 - Math.abs(r - 12.5)) * 0.85, bright = clamp(1.6 - Math.abs(r - 11)), dot = clamp(4 - r);
+      const a = Math.max(dark, bright, dot);
+      if (a <= 0) continue;
+      const k = bright >= dark * 0.9 || dot > 0.5 ? 1 : 0;
+      const i = (y * width + x) * 4;
+      const c = k ? rgb : [14, 50, 28];
+      px[i] = c[2] * a; px[i + 1] = c[1] * a; px[i + 2] = c[0] * a; px[i + 3] = a * 255;
+    }
+  }
+}
+
 const ease = (t) => t * t * (3 - 2 * t);
 const T_OPEN = 280, T_SCAN = 1100, T_CLOSE = 320;
 export const SCAN_TOTAL_MS = T_OPEN + T_SCAN + T_CLOSE;
@@ -283,6 +320,64 @@ export const FLASH_TOTAL_MS = 760;
 export class ScanAnimation {
   constructor({ enabled = true } = {}) {
     this.enabled = enabled;
+  }
+
+  /**
+   * drag: a ring where the button went down and a glowing trail that follows the pointer (sampled every frame),
+   * fading with age. When `stopped` resolves (button released) the trail fades out and rings mark the end.
+   * `bounds` {left, top, right, bottom}: where the drag can go. Never throws.
+   */
+  async trail(start, bounds, stopped, cancelled = () => false, button = 'left') {
+    if (!this.enabled) return;
+    let layer = null;
+    let ended = false;
+    stopped.then(() => { ended = true; });
+    try {
+      ensurePump();
+      const v = w.virtualScreen();
+      const pad = 330;
+      const left = Math.max(v.x, Math.floor(Math.min(bounds.left, start.x) - pad)), top = Math.max(v.y, Math.floor(Math.min(bounds.top, start.y) - pad));
+      const right = Math.min(v.x + v.width, Math.ceil(Math.max(bounds.right, start.x) + pad)), bottom = Math.min(v.y + v.height, Math.ceil(Math.max(bounds.bottom, start.y) + pad));
+      layer = new Layer(Math.max(40, right - left), Math.max(40, bottom - top));
+      const rgb = RIPPLE_COLORS[button] ?? RIPPLE_COLORS.left;
+      const pts = [{ x: start.x, y: start.y, t: 0 }];
+      const t0 = performance.now();
+      let endAt = 0, endPoint = null;
+      for (;;) {
+        const t = performance.now() - t0;
+        if (cancelled()) break;
+        if (ended && !endAt) { endAt = t; const c = w.cursorPos(); endPoint = { x: c.x, y: c.y }; pts.push({ ...endPoint, t }); }
+        if (endAt && t - endAt > TRAIL_FADE_MS) break;
+        if (!endAt) {
+          const c = w.cursorPos();
+          const last = pts[pts.length - 1];
+          if (Math.hypot(c.x - last.x, c.y - last.y) >= 1) pts.push({ x: c.x, y: c.y, t });
+        }
+        layer.px.fill(0);
+        const fade = endAt ? 1 - clamp((t - endAt) / TRAIL_FADE_MS) : 1;
+        for (let pass = 0; pass < 2; pass++) {
+          for (let k = 1; k < pts.length; k++) {
+            const age = (endAt ? Math.min(t, endAt) : t) - pts[k].t;
+            const a = clamp(1 - age / TRAIL_LIFE_MS) * fade;
+            if (a <= 0.02) continue;
+            const A = pts[k - 1], B = pts[k];
+            if (pass === 0) stroke(layer.px, layer.width, layer.height, A.x - left, A.y - top, B.x - left, B.y - top, 5.2, [14, 50, 28], a * 0.75);
+            else stroke(layer.px, layer.width, layer.height, A.x - left, A.y - top, B.x - left, B.y - top, 3, k % 6 < 5 ? rgb : [255, 255, 255], a);
+          }
+        }
+        marker(layer.px, layer.width, layer.height, start.x - left, start.y - top, rgb);
+        layer.present(left, top, 255 * fade);
+        await new Promise((r) => setTimeout(r, 16));
+      }
+      layer.destroy();
+      layer = null;
+      if (endPoint && !cancelled()) await this.ripple(endPoint, button, 1, cancelled);
+    } catch (e) {
+      process.stderr.write(`win-input-mcp: drag effect failed (${e.message})
+`);
+    } finally {
+      layer?.destroy();
+    }
   }
 
   /** click: expanding rings at the pressed point (colour by button, one ring per click). Never throws. */

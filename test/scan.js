@@ -1,5 +1,5 @@
 // Screenshot animation: windows appear over the region during the animation, are gone afterwards, the screenshot
-// result comes back at once and the next call waits. Presses no keys and never moves the pointer.
+// result comes back at once and the next call waits. Presses no keys and moves the pointer only in the drag-trail check (no button), and puts it back.
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -78,6 +78,25 @@ try {
     });
     const { encodePng } = await import('../src/image.js');
     fs.writeFileSync('test/out/ripple.png', encodePng(out, S * 3, S));
+  }
+  // drag trail: the effect follows the real pointer (moved here with no button down), then fades and rings the end
+  {
+    const home = w.cursorPos();
+    const anim = new ScanAnimation({ enabled: true });
+    const a = { x: v.x + 800, y: v.y + 500 }, z = { x: v.x + 1100, y: v.y + 650 };
+    w.mouseMoveTo(a.x, a.y);
+    let stop; const stopped = new Promise((r) => { stop = r; });
+    const run = anim.trail(a, { left: a.x, top: a.y, right: z.x, bottom: z.y }, stopped);
+    for (let i = 1; i <= 24; i++) { w.mouseMoveTo(Math.round(a.x + ((z.x - a.x) * i) / 24), Math.round(a.y + ((z.y - a.y) * i) / 24)); await sleep(16); }
+    const cap = w.captureScreenRect({ left: a.x - 30, top: a.y - 30, width: 360, height: 210 });
+    let lit = 0;
+    for (let i = 0; i < cap.bits.length; i += 4) { const b = cap.bits[i], g = cap.bits[i + 1], r = cap.bits[i + 2]; if (g > 200 && g - r > 90 && g - b > 60) lit++; }
+    fs.writeFileSync('test/out/drag-trail.png', shrinkToPng(cap, 540).png);
+    check('drag trail is drawn behind the pointer', !!scanWindows() && lit > 200, `${lit} trail pixels`);
+    stop();
+    await run;
+    check('drag trail is gone after release', !scanWindows());
+    w.mouseMoveTo(home.x, home.y);
   }
   // focus_window on the window that already has focus (changes nothing): green frame, short wait
   const fg = w.foregroundWindow();

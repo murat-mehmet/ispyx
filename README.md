@@ -185,3 +185,5 @@ After `screenshot_screen` / `screenshot_window` the result is returned at once, 
 `focus_window` lights a green frame (dark outline so it shows on white, bright core, corner brackets, soft inner glow, one blink) around the focused window for about 0.8 s; the next call waits for it, same switch as above.
 
 `click` draws expanding rings at the pressed point (green left, cyan right, amber middle; one ring per click of a double/triple click, dark outline so it shows on white). It does not delay the next call; only a screenshot waits for running rings to end, so they never show up in an image.
+
+`drag` marks the start with a ring and leaves a glowing trail behind the pointer (it fades with age and when the button is released, then a ring marks the end). Like `click`, it holds up only screenshots.
