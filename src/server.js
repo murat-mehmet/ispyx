@@ -52,7 +52,15 @@ async function tryBecomeOwner() {
 /** After a capture: eye and scan line over the captured region. Returns at once; later calls queue behind it. */
 function playScan(rect) {
   const epoch = guard.epoch;
-  pendingAnim = scan.play(rect, () => guard.epoch !== epoch);
+  // a region over several monitors is scanned on each of them at once (each part gets its own eye)
+  const parts = [];
+  for (const m of w.listMonitors()) {
+    const l = Math.max(rect.left, m.left), t = Math.max(rect.top, m.top);
+    const r = Math.min(rect.left + rect.width, m.left + m.width), b = Math.min(rect.top + rect.height, m.top + m.height);
+    if (r - l >= 8 && b - t >= 8) parts.push({ left: l, top: t, width: r - l, height: b - t });
+  }
+  if (!parts.length) parts.push(rect);
+  pendingAnim = Promise.all(parts.map((p) => scan.play(p, () => guard.epoch !== epoch)));
 }
 
 /** focus_window: green frame around the window; later calls queue behind it. */
@@ -107,12 +115,13 @@ function playKeycaps(keys) {
 let lastRadar = 0;
 function playRadar(list) {
   if (!config.animations || Date.now() - lastRadar < 8000) return;
-  const area = keyboardArea();
-  if (!area) return;
+  const areas = w.listMonitors().map((m) => ({ left: m.left, top: m.top, width: m.width, height: m.height }));
+  if (!areas.length) return;
   lastRadar = Date.now();
   const epoch = guard.epoch;
   const wins = list.filter((x) => !x.minimized && x.rect && x.rect.width > 0).map((x) => ({ rect: x.rect, allowed: x.allowed, elevated: x.elevated }));
-  const run = scan.radar(wins, area, () => guard.epoch !== epoch).finally(() => effects.delete(run));
+  // every monitor gets its own eye and ping, lighting the windows that lie on it
+  const run = Promise.all(areas.map((a) => scan.radar(wins, a, () => guard.epoch !== epoch))).finally(() => effects.delete(run));
   effects.add(run);
 }
 /** type_text: progress pill (never the text). Returns { progress, stop }. */
