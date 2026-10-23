@@ -535,6 +535,79 @@ export class ScanAnimation {
     }
   }
 
+  /**
+   * type_text: a small pill near the bottom of the screen with a keyboard icon, a progress bar and "37 / 120".
+   * It never shows the text. `progress.n` is the characters sent so far; the pill ends when `stopped` resolves.
+   */
+  async typing(total, progress, area, stopped, cancelled = () => false) {
+    if (!this.enabled || total < 1) return;
+    let layer = null;
+    let ended = false;
+    stopped.then(() => { ended = true; });
+    try {
+      ensurePump();
+      const W = 300, H = 64;
+      layer = new Layer(W, H);
+      const px = layer.px;
+      const glyphs = {};
+      for (const g of '0123456789/') glyphs[g] = textMask(g, 17, 600);
+      const adv = Math.max(...'0123456789'.split('').map((g) => glyphs[g].width)) + 1;
+      const put = (x, y, r, g, b, a) => {
+        if (a <= 0 || x < 0 || y < 0 || x >= W || y >= H) return;
+        const i = (y * W + x) * 4, k = 1 - a;
+        px[i] = b * a + px[i] * k; px[i + 1] = g * a + px[i + 1] * k; px[i + 2] = r * a + px[i + 2] * k; px[i + 3] = a * 255 + px[i + 3] * k;
+      };
+      const roundRect = (x0, y0, w0, h0, rad, fill, alpha, border) => {
+        for (let y = 0; y < h0; y++) for (let x = 0; x < w0; x++) {
+          const dx = Math.min(x, w0 - 1 - x), dy = Math.min(y, h0 - 1 - y);
+          const dist = Math.hypot(Math.max(0, rad - dx), Math.max(0, rad - dy)) - rad;
+          const inside = clamp(0.5 - dist);
+          if (fill) put(x0 + x, y0 + y, fill[0], fill[1], fill[2], inside * alpha);
+          if (border) put(x0 + x, y0 + y, border[0], border[1], border[2], clamp(0.5 - (Math.abs(dist + 1.2) - 1.2)) * inside);
+        }
+      };
+      const draw = (n) => {
+        px.fill(0);
+        roundRect(0, 0, W, H, 14, [26, 30, 36], 0.94, [60, 255, 110]);
+        // keyboard icon
+        roundRect(16, 20, 32, 24, 5, null, 0, [60, 255, 110]);
+        for (let r = 0; r < 2; r++) for (let c = 0; c < 4; c++) roundRect(21 + c * 6, 25 + r * 6, 4, 4, 1, [150, 255, 180], 1, null);
+        roundRect(24, 37, 16, 3, 1, [150, 255, 180], 1, null);
+        // counter "37 / 120" (glyph by glyph; fixed advance for digits)
+        let x = 66;
+        for (const ch of String(n) + ' / ' + String(total)) {
+          if (ch === ' ') { x += 5; continue; }
+          const g = glyphs[ch]; if (!g) continue;
+          const dx = ch === '/' ? 0 : Math.round((adv - g.width) / 2);
+          for (let yy = 0; yy < g.height; yy++) for (let xx = 0; xx < g.width; xx++) put(x + dx + xx, 10 + yy, 245, 250, 247, g.mask[yy * g.width + xx] / 255);
+          x += ch === '/' ? g.width : adv;
+        }
+        // progress bar
+        const bx = 66, bw = W - 66 - 18, by = 40;
+        roundRect(bx, by, bw, 8, 4, [58, 64, 72], 1, null);
+        const fw = Math.max(0, Math.round(bw * clamp(n / total)));
+        if (fw >= 2) roundRect(bx, by, fw, 8, 4, [60, 255, 110], 1, null);
+      };
+      const left = Math.round(area.left + (area.width - W) / 2), top = Math.round(area.top + area.height - H - 90);
+      const t0 = performance.now();
+      let endAt = 0;
+      for (;;) {
+        const t = performance.now() - t0;
+        if (cancelled()) break;
+        if (ended && t >= 500 && !endAt) endAt = t;
+        if (endAt && t - endAt > 260) break;
+        draw(Math.min(progress.n, total));
+        const a = endAt ? 1 - ease(clamp((t - endAt) / 260)) : ease(clamp(t / 110));
+        layer.present(left, top + (1 - Math.min(1, t / 110)) * 14, 255 * a);
+        await new Promise((r) => setTimeout(r, 33));
+      }
+    } catch (e) {
+      process.stderr.write(`win-input-mcp: typing effect failed (${e.message})\n`);
+    } finally {
+      layer?.destroy();
+    }
+  }
+
   /** click: expanding rings at the pressed point (colour by button, one ring per click). Never throws. */
   async ripple(point, button = 'left', rings = 1, cancelled = () => false) {
     if (!this.enabled) return;

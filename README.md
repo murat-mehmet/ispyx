@@ -195,3 +195,5 @@ After `screenshot_screen` / `screenshot_window` the result is returned at once, 
 Every pointer glide (the approach of `click`, `scroll`, `mouse_down`, `mouse_up`, `drag`, and `move` itself) leaves the short fading trail; the glide that carries a drag has the drag trail instead.
 
 `press_keys` shows the chords as key caps ("Ctrl" + "C") near the bottom of the monitor the keys go to, for about half a second plus 0.14 s per chord. Like `click`, it holds up only screenshots.
+
+`type_text` (6 characters or more) shows a small pill near the bottom of the monitor the keys go to: keyboard icon, progress bar and "37 / 120". It never shows the typed text. Like `click`, it holds up only screenshots.

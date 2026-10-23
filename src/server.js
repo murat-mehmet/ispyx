@@ -88,16 +88,32 @@ function playWheelCue(p, vert, horiz) {
   return stop;
 }
 /** press_keys: key caps near the bottom of the monitor holding the foreground window. */
-function playKeycaps(keys) {
-  const epoch = guard.epoch;
+function keyboardArea() {
   const fg = w.foregroundWindow();
   const r = fg ? w.getRect(fg) : null;
   const cx = r ? r.left + r.width / 2 : 0, cy = r ? r.top + r.height / 2 : 0;
   const mons = w.listMonitors();
   const m = mons.find((q) => cx >= q.left && cx < q.left + q.width && cy >= q.top && cy < q.top + q.height) ?? mons.find((q) => q.primary) ?? mons[0];
-  if (!m) return;
-  const run = scan.keycaps(keyLabels(keys), { left: m.left, top: m.top, width: m.width, height: m.height }, () => guard.epoch !== epoch).finally(() => effects.delete(run));
+  return m ? { left: m.left, top: m.top, width: m.width, height: m.height } : null;
+}
+function playKeycaps(keys) {
+  const epoch = guard.epoch;
+  const area = keyboardArea();
+  if (!area) return;
+  const run = scan.keycaps(keyLabels(keys), area, () => guard.epoch !== epoch).finally(() => effects.delete(run));
   effects.add(run);
+}
+/** type_text: progress pill (never the text). Returns { progress, stop }. */
+function playTyping(total) {
+  const epoch = guard.epoch;
+  const area = keyboardArea();
+  const progress = { n: 0 };
+  let stop = () => {};
+  if (!area || total < 6) return { progress, stop };
+  const stopped = new Promise((r) => { stop = r; });
+  const run = scan.typing(total, progress, area, stopped, () => guard.epoch !== epoch).finally(() => effects.delete(run));
+  effects.add(run);
+  return { progress, stop };
 }
 /** A screenshot must not catch a running effect. */
 async function waitForEffects() {
@@ -583,7 +599,12 @@ server.registerTool('type_text', {
   const speed = args.speed ?? config.typeSpeed;
   const delays = typingDelays(args.text, { min: config.typeMinMs, max: config.typeMaxMs, capMs: config.typeCapMs, speed });
   const t0 = performance.now();
-  await w.typeUnicode(args.text, () => guard.checkKill(), delays);
+  const fx = playTyping([...args.text].filter((c) => c !== '\r').length);
+  try {
+    await w.typeUnicode(args.text, () => { fx.progress.n++; guard.checkKill(); }, delays);
+  } finally {
+    fx.stop();
+  }
   return json({ ok: true, typed: args.text.length, ms: Math.round(performance.now() - t0), speed, keyboardLayout: '0x' + w.foregroundLayout().toString(16) });
 }));
 

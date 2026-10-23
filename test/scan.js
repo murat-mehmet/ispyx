@@ -144,6 +144,28 @@ try {
     await run;
     check('key caps are gone afterwards', !scanWindows());
   }
+  // type_text progress pill (drawn directly, nothing is typed): follows the counter, never shows text
+  {
+    const anim = new ScanAnimation({ enabled: true });
+    const mon = w.listMonitors().find((m) => m.primary);
+    const progress = { n: 0 };
+    let stop; const stopped = new Promise((r) => { stop = r; });
+    const run = anim.typing(120, progress, { left: mon.left, top: mon.top, width: mon.width, height: mon.height }, stopped);
+    await sleep(200);
+    progress.n = 37;
+    await sleep(200);
+    const grab = () => w.captureScreenRect({ left: mon.left + Math.round(mon.width / 2) - 160, top: mon.top + mon.height - 190, width: 320, height: 100 });
+    const cap = grab();
+    let lit = 0;
+    for (let i = 0; i < cap.bits.length; i += 4) { const b = cap.bits[i], g = cap.bits[i + 1], r = cap.bits[i + 2]; if (g > 200 && g - r > 90 && g - b > 60) lit++; }
+    fs.writeFileSync('test/out/typing-pill.png', shrinkToPng(cap, 320).png);
+    check('typing pill is drawn with a progress bar', !!scanWindows() && lit > 150, `${lit} green pixels`);
+    progress.n = 120;
+    await sleep(120);
+    stop();
+    await run;
+    check('typing pill is gone afterwards', !scanWindows());
+  }
   // focus_window on the window that already has focus (changes nothing): green frame, short wait
   const fg = w.foregroundWindow();
   if (fg) {
