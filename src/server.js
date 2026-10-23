@@ -55,6 +55,12 @@ function playScan(rect) {
   pendingAnim = scan.play(rect, () => guard.epoch !== epoch);
 }
 
+/** focus_window: green frame around the window; later calls queue behind it. */
+function playFlash(rect) {
+  const epoch = guard.epoch;
+  pendingAnim = scan.flash(rect, () => guard.epoch !== epoch);
+}
+
 const handlers = new Map();
 let chain = Promise.resolve();
 const UNQUEUED = new Set(['wait']);
@@ -285,7 +291,9 @@ server.registerTool('focus_window', {
   const win = guard.resolve(args);
   entry.window = winSummary(win);
   await guard.focus(win);
-  return json({ ok: true, window: winSummary(w.describeWindow(win.hwnd)) });
+  const now = w.describeWindow(win.hwnd);
+  playFlash(now.rect);
+  return json({ ok: true, window: winSummary(now) });
 }));
 
 server.registerTool('screenshot_window', {

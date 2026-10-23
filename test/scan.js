@@ -7,7 +7,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import * as w from '../src/win32.js';
 import fs from 'node:fs';
-import { SCAN_TOTAL_MS } from '../src/scan.js';
+import { SCAN_TOTAL_MS, FLASH_TOTAL_MS } from '../src/scan.js';
 import { shrinkToPng } from '../src/image.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -58,6 +58,20 @@ try {
   check('full-monitor scan has its windows up', !!scanWindows());
   await call('cursor_position');
   check('full-monitor scan finishes and cleans up', !scanWindows(), `${Math.round(performance.now() - t2)} ms`);
+  // focus_window on the window that already has focus (changes nothing): green frame, short wait
+  const fg = w.foregroundWindow();
+  if (fg) {
+    const t3 = performance.now();
+    const fr = await call('focus_window', { hwnd: fg });
+    const back3 = performance.now() - t3;
+    await sleep(120);
+    const rect = w.getRect(fg);
+    fs.writeFileSync('test/out/focus-frame.png', shrinkToPng(w.captureScreenRect({ left: Math.max(rect.left, w.virtualScreen().x), top: Math.max(rect.top, 0), width: Math.min(rect.width, 1200), height: Math.min(rect.height, 700) }), 900).png);
+    check('focus_window answers at once and shows the frame', !fr.isError && back3 < 300 && !!scanWindows(), `${Math.round(back3)} ms`);
+    await call('cursor_position');
+    const waited3 = performance.now() - t3;
+    check('the next call waits for the frame (about half a second)', waited3 > FLASH_TOTAL_MS - 120 && waited3 < 1200 && !scanWindows(), `${Math.round(waited3)} ms`);
+  }
   // a window screenshot animates too
   const notepadFree = w.listWindows().filter((x) => x.process === 'notepad.exe').length === 0;
   const first = w.listWindows().find((x) => x.visible && x.title && x.process !== 'node.exe');

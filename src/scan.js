@@ -199,15 +199,68 @@ export function drawWedge(px, width, height, ax, ay, x1, x2, ey) {
   }
 }
 
+/** A glowing green frame just inside the rectangle's edges, with brighter corner brackets. Only the border strip is touched. */
+export function renderFrame(px, width, height) {
+  const reach = 40, arm = Math.min(34, Math.floor(Math.min(width, height) / 3));
+  px.fill(0, 0, width * height * 4);
+  for (let y = 0; y < height; y++) {
+    const dy = Math.min(y, height - 1 - y);
+    const full = dy < reach;
+    for (let x = 0; x < width; x++) {
+      const dx = Math.min(x, width - 1 - x);
+      if (!full && dx >= reach && width - reach - 1 > x) { x = width - reach - 1; continue; } // skip the empty middle
+      const d = Math.min(dx, dy);
+      const corner = dx < arm && dy < arm ? 1 : 0; // inside a corner square: the bracket is the edge pair there
+      const bracket = (dx < 3 && (y < arm || y >= height - arm)) || (dy < 3 && (x < arm || x >= width - arm)) ? 1 : 0;
+      let a = 0.5 * Math.exp(-d / 7) + (d < 1.5 ? 0.5 : 0) + (bracket ? 0.5 : 0) + corner * 0 ;
+      a = clamp(a);
+      if (a <= 0.002) continue;
+      const k = clamp((d < 1.5 ? 0.6 : 0) + bracket * 0.5);
+      const i = (y * width + x) * 4;
+      px[i] = mix(110, 255, k) * a; px[i + 1] = 255 * a; px[i + 2] = mix(60, 255, k) * a; px[i + 3] = a * 255;
+    }
+  }
+}
+
 const ease = (t) => t * t * (3 - 2 * t);
 const T_OPEN = 280, T_SCAN = 1100, T_CLOSE = 320;
 export const SCAN_TOTAL_MS = T_OPEN + T_SCAN + T_CLOSE;
 
 let flip = false; // alternates the side of the eye between screenshots
 
+export const FLASH_TOTAL_MS = 520;
+
 export class ScanAnimation {
   constructor({ enabled = true } = {}) {
     this.enabled = enabled;
+  }
+
+  /** focus_window: a green frame lights up around the window (clipped to the desktop) and fades. Never throws. */
+  async flash(rect, cancelled = () => false) {
+    if (!this.enabled) return;
+    let layer = null;
+    try {
+      const v = w.virtualScreen();
+      const left = Math.max(rect.left, v.x), top = Math.max(rect.top, v.y);
+      const right = Math.min(rect.left + rect.width, v.x + v.width), bottom = Math.min(rect.top + rect.height, v.y + v.height);
+      if (right - left < 20 || bottom - top < 20) return;
+      ensurePump();
+      layer = new Layer(right - left, bottom - top);
+      renderFrame(layer.px, layer.width, layer.height);
+      const t0 = performance.now();
+      for (;;) {
+        const t = performance.now() - t0;
+        if (t >= FLASH_TOTAL_MS || cancelled()) break;
+        const a = t < 90 ? t / 90 : t < 250 ? 1 : 1 - ease((t - 250) / (FLASH_TOTAL_MS - 250));
+        layer.present(left, top, 255 * a);
+        await new Promise((r) => setTimeout(r, 16));
+      }
+    } catch (e) {
+      process.stderr.write(`win-input-mcp: focus effect failed (${e.message})
+`);
+    } finally {
+      layer?.destroy();
+    }
   }
 
   /**
