@@ -197,3 +197,5 @@ Every pointer glide (the approach of `click`, `scroll`, `mouse_down`, `mouse_up`
 `press_keys` shows the chords as key caps ("Ctrl" + "C") near the bottom of the monitor the keys go to, for about half a second plus 0.14 s per chord. Like `click`, it holds up only screenshots.
 
 `type_text` (6 characters or more) shows a small pill near the bottom of the monitor the keys go to: keyboard icon, progress bar and "37 / 120". It never shows the typed text. Like `click`, it holds up only screenshots.
+
+`list_windows` sweeps a scan line over the monitor the keys go to; each window's frame lights up as the line reaches it (green usable, red denylisted, amber elevated), then fades. At most once every 8 s; like `click`, it holds up only screenshots.

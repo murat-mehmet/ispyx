@@ -301,6 +301,25 @@ export function renderRipple(px, size, t, rings, rgb) {
   }
 }
 
+/** A rectangle outline (dark line outside, bright line inside) with alpha `a`; coordinates are inclusive pixel edges. */
+function drawBorder(px, W, H, x0, y0, x1, y1, rgb, a, thick) {
+  const set = (x, y, r, g, b, al) => {
+    if (x < 0 || y < 0 || x >= W || y >= H || al <= 0) return;
+    const i = (y * W + x) * 4;
+    if (al * 255 <= px[i + 3]) return;
+    px[i] = b * al; px[i + 1] = g * al; px[i + 2] = r * al; px[i + 3] = al * 255;
+  };
+  const ring = (inset, width, c, al) => {
+    const a0 = x0 + inset, b0 = y0 + inset, a1 = x1 - inset, b1 = y1 - inset;
+    for (let k = 0; k < width; k++) {
+      for (let x = a0 + k; x <= a1 - k; x++) { set(x, b0 + k, c[0], c[1], c[2], al); set(x, b1 - k, c[0], c[1], c[2], al); }
+      for (let y = b0 + k; y <= b1 - k; y++) { set(a0 + k, y, c[0], c[1], c[2], al); set(a1 - k, y, c[0], c[1], c[2], al); }
+    }
+  };
+  ring(0, 2, [14, 50, 28], 0.85 * a);
+  ring(2, thick, rgb, a);
+}
+
 const KEY_LABELS = { ctrl: 'Ctrl', control: 'Ctrl', shift: 'Shift', alt: 'Alt', win: 'Win', windows: 'Win', meta: 'Win', cmd: 'Win', super: 'Win', enter: 'Enter', return: 'Enter', esc: 'Esc', escape: 'Esc', tab: 'Tab', space: 'Space', backspace: 'Backspace', delete: 'Del', del: 'Del', insert: 'Ins', ins: 'Ins', home: 'Home', end: 'End', pageup: 'PgUp', pgup: 'PgUp', pagedown: 'PgDn', pgdn: 'PgDn', left: '\u2190', up: '\u2191', right: '\u2192', down: '\u2193' };
 /** "ctrl+a ctrl+c" -> [['Ctrl', 'A'], ['Ctrl', 'C']] */
 export const keyLabels = (keys) => keys.trim().split(/\s+/).filter(Boolean).map((chord) => chord.split('+').filter(Boolean).map((k) => KEY_LABELS[k.toLowerCase()] ?? (k.length === 1 ? k.toUpperCase() : k[0].toUpperCase() + k.slice(1))));
@@ -605,6 +624,59 @@ export class ScanAnimation {
       process.stderr.write(`win-input-mcp: typing effect failed (${e.message})\n`);
     } finally {
       layer?.destroy();
+    }
+  }
+
+  /**
+   * list_windows: a scan line sweeps the monitor top to bottom; each window's frame lights when the line reaches
+   * its top edge, stays lit until the line has passed its bottom edge, then fades. Green = usable, red = on the
+   * denylist, amber = elevated (cannot be controlled). `wins`: [{ rect, allowed, elevated }] in desktop pixels.
+   */
+  async radar(wins, area, cancelled = () => false) {
+    if (!this.enabled) return;
+    let frames = null, band = null;
+    try {
+      const W = area.width, H = area.height;
+      const list = wins
+        .map((x) => {
+          const l = Math.max(area.left, x.rect.left), t = Math.max(area.top, x.rect.top);
+          const r = Math.min(area.left + W, x.rect.left + x.rect.width), b = Math.min(area.top + H, x.rect.top + x.rect.height);
+          return { x0: l - area.left, y0: t - area.top, x1: r - area.left - 1, y1: b - area.top - 1, rgb: x.allowed === false ? [255, 80, 80] : x.elevated ? [255, 190, 40] : [60, 255, 110] };
+        })
+        .filter((q) => q.x1 - q.x0 >= 60 && q.y1 - q.y0 >= 40)
+        .slice(0, 14);
+      if (!list.length) return;
+      ensurePump();
+      frames = new Layer(W, H);
+      band = new Layer(W, 56);
+      renderBand(band.px, W, 56);
+      const SWEEP = 1100, FADE = 380, bandH = 56;
+      const t0 = performance.now();
+      for (;;) {
+        const t = performance.now() - t0;
+        if (t >= SWEEP + FADE || cancelled()) break;
+        const p = clamp(t / SWEEP);
+        const edge = p * H; // the line's leading edge (bottom of the band)
+        frames.px.fill(0);
+        for (const q of list) {
+          if (edge < q.y0) continue; // not reached yet
+          const passed = edge > q.y1;
+          const tPassed = passed ? SWEEP * ((q.y1 + 1) / H) : 0; // when the line left the window
+          const a = t >= SWEEP ? 1 - clamp((t - SWEEP) / FADE) : passed ? 1 - 0.45 * clamp((t - tPassed) / 300) : 1;
+          const hitAge = t - SWEEP * (q.y0 / H); // just after the line touches the window: thicker flash
+          const thick = hitAge < 140 ? 5 : 3;
+          drawBorder(frames.px, W, H, q.x0, q.y0, q.x1, q.y1, q.rgb, a, thick);
+        }
+        frames.present(area.left, area.top, 255);
+        if (t < SWEEP) band.present(area.left, area.top + edge - bandH, 255 * Math.min(1, p * 12, (1 - p) * 12));
+        else if (band.shown) band.present(area.left, area.top, 0, 1);
+        await new Promise((r) => setTimeout(r, 24));
+      }
+    } catch (e) {
+      process.stderr.write(`win-input-mcp: window scan effect failed (${e.message})\n`);
+    } finally {
+      band?.destroy();
+      frames?.destroy();
     }
   }
 

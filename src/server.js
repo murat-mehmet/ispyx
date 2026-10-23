@@ -103,6 +103,18 @@ function playKeycaps(keys) {
   const run = scan.keycaps(keyLabels(keys), area, () => guard.epoch !== epoch).finally(() => effects.delete(run));
   effects.add(run);
 }
+/** list_windows: a scan line passes over the monitor and lights each window frame (at most every 8 s). */
+let lastRadar = 0;
+function playRadar(list) {
+  if (!config.animations || Date.now() - lastRadar < 8000) return;
+  const area = keyboardArea();
+  if (!area) return;
+  lastRadar = Date.now();
+  const epoch = guard.epoch;
+  const wins = list.filter((x) => !x.minimized && x.rect && x.rect.width > 0).map((x) => ({ rect: x.rect, allowed: x.allowed, elevated: x.elevated }));
+  const run = scan.radar(wins, area, () => guard.epoch !== epoch).finally(() => effects.delete(run));
+  effects.add(run);
+}
 /** type_text: progress pill (never the text). Returns { progress, stop }. */
 function playTyping(total) {
   const epoch = guard.epoch;
@@ -334,6 +346,7 @@ server.registerTool('list_windows', {
     hwnd: x.hwnd, title: x.title, className: x.className, process: x.process, rect: x.rect,
     minimized: x.minimized, allowed: !guard.denied(x), elevated: x.elevated,
   }));
+  playRadar(list);
   return json({ denylist: config.denylist, foreground: w.foregroundWindow(), windows: list });
 }, { session: false }));
 
