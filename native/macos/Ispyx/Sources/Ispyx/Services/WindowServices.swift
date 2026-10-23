@@ -229,7 +229,11 @@ func registerWindowServices(_ r: Router) {
 
     r.register("describeWindow") { args in
         let id = try args.int(0)
-        guard let w = findWindow(id) else { throw HelperError("Window \(id) no longer exists.") }
+        // Like the Windows client: an unknown id (0 = no foreground window) gives an empty description, not an error.
+        guard let w = findWindow(id) else {
+            return ["hwnd": id, "title": "", "className": "", "pid": 0, "process": "", "elevated": false,
+                    "minimized": false, "rect": NSNull()] as [String: Any]
+        }
         return describe(w)
     }
 
@@ -266,7 +270,11 @@ func registerWindowServices(_ r: Router) {
         return 0
     }
 
-    r.register("foregroundWindow") { _ in return frontmostWindowId() }
+    // Also the client's init() probe: a missing Accessibility permission surfaces here with the helpful message.
+    r.register("foregroundWindow") { _ in
+        try requirePermission("accessibility")
+        return frontmostWindowId()
+    }
 
     r.register("bringToForeground") { args in
         let id = try args.int(0)
@@ -279,6 +287,10 @@ func registerWindowServices(_ r: Router) {
         func raise() {
             if let app = NSRunningApplication(processIdentifier: pid_t(w.pid)) {
                 app.activate(options: [.activateIgnoringOtherApps])
+            }
+            if axOK {
+                // Newer macOS ignores activate() from a background app; the AX frontmost flag still works.
+                AXUIElementSetAttributeValue(axApp(w.pid), kAXFrontmostAttribute as CFString, kCFBooleanTrue)
             }
             if let e = el {
                 AXUIElementPerformAction(e, kAXRaiseAction as CFString)
