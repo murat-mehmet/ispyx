@@ -72,8 +72,9 @@ class Layer {
   }
 
   /** Moves the window to (x, y) and shows the current pixels at constant opacity `alpha` (0-255). */
-  present(x, y, alpha, height = this.height) {
-    f.UpdateLayeredWindow(this.hwnd, 0, { x: Math.round(x), y: Math.round(y) }, { cx: this.width, cy: Math.max(1, Math.min(this.height, Math.round(height))) }, this.dc, { x: 0, y: 0 }, 0,
+  /** Shows the top-left `width` x `height` part of the buffer at (x, y) with constant opacity `alpha` (0-255). */
+  present(x, y, alpha, height = this.height, width = this.width) {
+    f.UpdateLayeredWindow(this.hwnd, 0, { x: Math.round(x), y: Math.round(y) }, { cx: Math.max(1, Math.min(this.width, Math.round(width))), cy: Math.max(1, Math.min(this.height, Math.round(height))) }, this.dc, { x: 0, y: 0 }, 0,
       { op: 0, flags: 0, alpha: Math.max(0, Math.min(255, Math.round(alpha))), format: 1 }, 2); // ULW_ALPHA, AC_SRC_ALPHA
     if (!this.shown) {
       f.ShowWindow(this.hwnd, 4); // SW_SHOWNOACTIVATE
@@ -97,7 +98,7 @@ const mix = (a, b, t) => a + (b - a) * t;
 const smooth = (t) => t * t * (3 - 2 * t);
 
 /** The scan line: a bright green edge at the bottom with a glow trailing above it. */
-export function renderBand(px, width, height) {
+export function renderBand(px, width, height, stride = width) {
   const edgeFade = Math.max(8, width * 0.06);
   for (let y = 0; y < height; y++) {
     const d = height - 1 - y; // distance above the leading edge
@@ -108,7 +109,7 @@ export function renderBand(px, width, height) {
       const a = clamp(k * e + 0.9 * hit);
       const core = clamp((d < 2 ? 0.75 : 0) + hit);
       const r = mix(40, 255, core), g = mix(230, 255, core), b = mix(110, 255, core);
-      const i = (y * width + x) * 4;
+      const i = (y * stride + x) * 4;
       px[i] = b * a; px[i + 1] = g * a; px[i + 2] = r * a; px[i + 3] = a * 255;
     }
   }
@@ -167,19 +168,28 @@ export function renderEye(px, size, open, gx, gy, glow = 0) {
   }
 }
 
-/** The laser: a thin vertical beam, white-hot core with a green glow, brighter along its length as it pulses. */
-export function renderBeam(px, width, height, phase = 0) {
+/**
+ * The scanner cone: light opening from the pupil (top centre of the buffer) towards the bottom, fading with
+ * distance, with brighter rims and faint horizontal striations. A row's width grows linearly, reaching the full
+ * buffer width at the last row, so showing only the first d rows gives the cone as it is d pixels from the eye.
+ */
+export function renderCone(px, width, height) {
+  px.fill(0, 0, width * height * 4);
   for (let y = 0; y < height; y++) {
-    const pulse = 0.82 + 0.18 * Math.sin(y * 0.45 - phase);
-    for (let x = 0; x < width; x++) {
+    const v = y / height;
+    const half = Math.max(1.5, (width / 2) * v);
+    const x0 = Math.max(0, Math.floor(width / 2 - half - 1)), x1 = Math.min(width - 1, Math.ceil(width / 2 + half + 1));
+    const stripe = 0.86 + 0.14 * Math.sin(y * 0.7);
+    for (let x = x0; x <= x1; x++) {
       const dx = Math.abs(x + 0.5 - width / 2);
-      const core = Math.exp(-((dx / 1.6) ** 2));
-      const glow = 0.5 * Math.exp(-((dx / 6) ** 2));
-      const a = clamp((core + glow) * pulse);
-      const k = clamp(core * 1.2);
-      const r = mix(40, 255, k), g = mix(235, 255, k), b = mix(110, 255, k);
+      const u = dx / half; // 0 at the axis, 1 at the rim
+      const inside = clamp(half - dx + 0.5); // anti-aliased rim
+      const body = 0.20 * (1 - 0.5 * v) * (1 - 0.55 * smooth(clamp(u)));
+      const rim = 0.55 * Math.exp(-(((half - dx) / 2.2) ** 2)) * (1 - 0.4 * v);
+      const axis = 0.35 * Math.exp(-((dx / 3) ** 2)) * (1 - v);
+      const a = clamp((body * stripe + rim + axis) * inside);
       const i = (y * width + x) * 4;
-      px[i] = b * a; px[i + 1] = g * a; px[i + 2] = r * a; px[i + 3] = a * 255;
+      px[i] = 110 * a; px[i + 1] = 255 * a; px[i + 2] = 60 * a; px[i + 3] = a * 255;
     }
   }
 }
@@ -199,22 +209,23 @@ export class ScanAnimation {
    */
   async play(rect, cancelled = () => false) {
     if (!this.enabled) return;
-    let band = null, beam = null, eye = null;
+    let cone = null, band = null, eye = null;
     try {
       ensurePump();
       const size = Math.round(clamp(Math.min(rect.width, rect.height) * 0.4, 56, 170));
-      const bandH = 70, beamW = 26;
-      band = new Layer(Math.max(40, rect.width), bandH);
-      renderBand(band.px, band.width, band.height);
-      beam = new Layer(beamW, Math.max(2, rect.height));
-      eye = new Layer(size, size);
+      const bandH = 56;
       // the eye sits on the top edge of the region (pushed down when the region touches the screen top)
       const ex = rect.left + (rect.width - size) / 2;
       const ey = Math.max(w.virtualScreen().y, rect.top - size * 0.55);
       const gy = 0.95;
       const pupil = pupilPos(size, 0, gy);
-      const cx = ex + pupil.x, cy = ey + pupil.y; // laser origin
-      const scanTop = Math.max(rect.top, cy);
+      const cx = ex + pupil.x, cy = ey + pupil.y; // the cone starts at the pupil
+      const reach = Math.max(8, rect.top + rect.height - cy); // pupil to the bottom of the region
+      const spread = Math.max(40, rect.width);
+      cone = new Layer(spread, Math.round(reach));
+      renderCone(cone.px, cone.width, cone.height);
+      band = new Layer(spread, bandH);
+      eye = new Layer(size, size);
       const t0 = performance.now();
       for (;;) {
         const t = performance.now() - t0;
@@ -223,18 +234,17 @@ export class ScanAnimation {
         if (t < T_OPEN) { open = ease(t / T_OPEN); fade = open; }
         else if (t < T_OPEN + T_SCAN) { open = 1; fade = 1; p = ease((t - T_OPEN) / T_SCAN); }
         else { const k = (t - T_OPEN - T_SCAN) / T_CLOSE; open = 1 - ease(k); fade = 1 - k; p = 1; }
-        const charge = p > 0 ? 1 : clamp((t - T_OPEN * 0.6) / (T_OPEN * 0.4)); // pupil glows just before firing
+        const charge = p > 0 ? 1 : clamp((t - T_OPEN * 0.6) / (T_OPEN * 0.4)); // pupil glows just before the scan
         renderEye(eye.px, size, open, 0, mix(0.5, gy, clamp(t / T_OPEN)), charge);
-        const edge = scanTop + p * (rect.top + rect.height - scanTop);
         if (p > 0 && p < 1) {
-          const len = Math.round(edge - cy);
-          if (len > 1) {
-            renderBeam(beam.px, beamW, len, t * 0.05);
-            beam.present(cx - beamW / 2, cy, 255, len);
-          }
-          band.present(rect.left + (rect.width - band.width) / 2, edge - bandH, 255 * Math.min(1, p * 8, (1 - p) * 8));
-        } else if (beam.shown) {
-          beam.present(cx - beamW / 2, cy, 0, 1); // fully transparent: the laser is off
+          const depth = Math.max(2, p * reach);
+          const beamW = Math.max(24, Math.round(spread * depth / reach)); // width of the cone at the scan line
+          cone.present(cx - spread / 2, cy, 255 * Math.min(1, p * 10, (1 - p) * 6), depth);
+          renderBand(band.px, beamW, bandH, band.width);
+          band.present(cx - beamW / 2, cy + depth - bandH, 255 * Math.min(1, p * 10, (1 - p) * 6), bandH, beamW);
+        } else if (cone.shown) {
+          cone.present(cx - spread / 2, cy, 0, 1);
+          band.present(cx - spread / 2, cy, 0, 1);
         }
         eye.present(ex, ey, 255 * fade);
         await new Promise((r) => setTimeout(r, 16));
@@ -242,8 +252,8 @@ export class ScanAnimation {
     } catch (e) {
       process.stderr.write(`win-input-mcp: scan animation failed (${e.message})\n`);
     } finally {
+      cone?.destroy();
       band?.destroy();
-      beam?.destroy();
       eye?.destroy();
     }
   }
