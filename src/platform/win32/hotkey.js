@@ -65,7 +65,7 @@ export function installStopHotkey(onStop, lingerMs = HOOK_LINGER_MS) {
       if (!hook) {
         ensurePump();
         hook = SetWindowsHookExW(13, proc, 0, 0); // WH_KEYBOARD_LL
-        if (!hook) process.stderr.write('win-input-mcp: stop hotkey hook not installed; using polling only\n');
+        if (!hook) process.stderr.write('ispyx: stop hotkey hook not installed; using polling only\n');
       }
       if (timer) clearTimeout(timer);
       timer = setTimeout(remove, lingerMs);

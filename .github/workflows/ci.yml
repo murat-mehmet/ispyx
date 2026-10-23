@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Syntax check (node --check on every src file)
+        shell: bash
+        run: find src -name '*.js' -print0 | xargs -0 -n1 node --check
+      - name: Package contents
+        run: npm pack --dry-run
+
+  # Enable once the desktop-free "core-test" script exists in package.json:
+  # core-test:
+  #   strategy:
+  #     matrix:
+  #       os: [windows-latest, ubuntu-latest]
+  #   runs-on: ${{ matrix.os }}
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 22
+  #     - run: npm ci
+  #     - run: npm run core-test

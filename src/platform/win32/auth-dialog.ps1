@@ -1,4 +1,4 @@
-# Password prompt for win-input-mcp. Prints one JSON line on stdout and exits.
+# Password prompt for ispyx. Prints one JSON line on stdout and exits.
 #   {"password":"..","confirm":"..","value":24,"unit":"saat","makeDefault":false}   or   {"cancel":true}
 # Control names double as UI Automation ids, so tests can drive the dialog.
 param(
@@ -14,7 +14,7 @@ Add-Type -AssemblyName System.Drawing
 
 $setup = $Mode -eq 'setup'
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'win-input-mcp'
+$form.Text = 'ispyx'
 $form.Name = 'authForm'
 $form.StartPosition = 'CenterScreen'
 $form.FormBorderStyle = 'FixedDialog'

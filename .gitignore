@@ -2,3 +2,8 @@ node_modules/
 test/out/
 logs/
 config.json
+npm-debug.log*
+*.log
+dist/
+native/macos/**/.build/
+.DS_Store

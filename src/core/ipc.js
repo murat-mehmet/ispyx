@@ -1,15 +1,15 @@
-// One working server per desktop: the first win-input-mcp process listens on a named pipe and does the work;
+// One working server per desktop: the first ispyx process listens on a named pipe and does the work;
 // every other process (one per Claude instance) stays a normal MCP server toward its own Claude and forwards
 // the tool calls over the pipe. Protocol: one JSON line each way per call.
 import net from 'node:net';
 import os from 'node:os';
 import crypto from 'node:crypto';
 
-/** Same user + same WIN_INPUT_* settings = same pipe, so test servers with their own env never meet the live one. */
+/** Same user + same ISPYX_* (or legacy WIN_INPUT_*) settings = same pipe, so test servers with their own env never meet the live one. */
 export function pipeName() {
-  const env = Object.entries(process.env).filter(([k]) => k.startsWith('WIN_INPUT_')).sort().map(([k, v]) => `${k}=${v}`).join('\n');
+  const env = Object.entries(process.env).filter(([k]) => k.startsWith('ISPYX_') || k.startsWith('WIN_INPUT_')).sort().map(([k, v]) => `${k}=${v}`).join('\n');
   const user = os.userInfo().username.replace(/[^\w.-]/g, '_');
-  return `\\\\.\\pipe\\win-input-mcp-${user}-${crypto.createHash('sha1').update(env).digest('hex').slice(0, 8)}`;
+  return `\\\\.\\pipe\\ispyx-${user}-${crypto.createHash('sha1').update(env).digest('hex').slice(0, 8)}`;
 }
 
 /** Reads newline-delimited JSON from a stream. */
@@ -89,8 +89,8 @@ export function callOwner(name, tool, args) {
       connected = true;
       sock.write(JSON.stringify({ id: 1, name: tool, args }) + '\n');
     });
-    sock.on('error', (e) => finish(reject, connected ? new Error(`The win-input-mcp server that was doing the work went away (${e.code ?? e.message}). Try the call again.`) : new OwnerGone(e.code)));
-    sock.on('close', () => finish(reject, connected ? new Error('The win-input-mcp server that was doing the work went away. Try the call again.') : new OwnerGone('closed')));
+    sock.on('error', (e) => finish(reject, connected ? new Error(`The ispyx server that was doing the work went away (${e.code ?? e.message}). Try the call again.`) : new OwnerGone(e.code)));
+    sock.on('close', () => finish(reject, connected ? new Error('The ispyx server that was doing the work went away. Try the call again.') : new OwnerGone('closed')));
     lines(sock, (l) => {
       const r = JSON.parse(l);
       if (r.error !== undefined) finish(reject, new Error(r.error));

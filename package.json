@@ -1,11 +1,22 @@
 {
-  "name": "win-input-mcp",
+  "name": "ispyx",
   "version": "1.0.0",
-  "description": "Local Windows desktop-control MCP server (stdio only): windows, screenshots, mouse, keyboard, clipboard.",
+  "description": "Local desktop-control MCP server: lets an AI use your keyboard, mouse and screen (windows, screenshots, clicks, typing, clipboard). stdio only, Windows today.",
   "type": "module",
   "main": "src/server.js",
-  "bin": { "win-input-mcp": "src/server.js" },
+  "bin": { "ispyx": "src/server.js" },
+  "files": [
+    "src/",
+    "README.md",
+    "LICENSE",
+    "config.example.json"
+  ],
   "engines": { "node": ">=22" },
+  "keywords": ["mcp", "model-context-protocol", "computer-use", "desktop-automation", "windows", "screenshot", "keyboard", "mouse", "claude"],
+  "repository": { "type": "git", "url": "git+https://github.com/<owner>/ispyx.git" },
+  "bugs": { "url": "https://github.com/<owner>/ispyx/issues" },
+  "homepage": "https://github.com/<owner>/ispyx#readme",
+  "_todo": "Replace <owner> in repository/bugs/homepage, choose a license (add a LICENSE file and set \"license\"), then remove \"private\": true to publish.",
   "scripts": {
     "start": "node src/server.js",
     "test": "node test/unit.js",

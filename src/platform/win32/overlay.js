@@ -79,7 +79,7 @@ export class Overlay {
       // Windows only delivers paint/hit-test messages while someone pumps; do it here, on this thread.
       ensurePump();
     } catch (e) {
-      process.stderr.write(`win-input-mcp: overlay disabled (${e.message})\n`);
+      process.stderr.write(`ispyx: overlay disabled (${e.message})\n`);
       this.enabled = false;
       this.hwnd = 0;
     }
@@ -125,7 +125,7 @@ export class Overlay {
     if (!this.enabled) return;
     this.active++;
     clearTimeout(this.timer);
-    this._show(`win-input-mcp is working: ${label}   |   To stop press ${this.stopLabel}`);
+    this._show(`ispyx is working: ${label}   |   To stop press ${this.stopLabel}`);
   }
 
   done() {
@@ -143,7 +143,7 @@ export class Overlay {
     if (!this.enabled) return;
     this.stopped = true;
     clearTimeout(this.timer);
-    this._show(`win-input-mcp STOPPED (${reason})`);
+    this._show(`ispyx STOPPED (${reason})`);
     this.timer = setTimeout(() => this._hide(), 5000);
     this.timer.unref();
   }
@@ -153,7 +153,7 @@ export class Overlay {
     if (!this.enabled) return;
     this.active = 0;
     clearTimeout(this.timer);
-    this._show(`win-input-mcp CANCELLED (${reason})   |   press again to shut down`);
+    this._show(`ispyx CANCELLED (${reason})   |   press again to shut down`);
     this.timer = setTimeout(() => this._hide(), windowMs);
     this.timer.unref();
   }

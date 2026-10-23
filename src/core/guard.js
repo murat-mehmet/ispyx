@@ -25,12 +25,24 @@ const DEFAULTS = {
   moveMaxMs: 1000,
   maxTypeLength: 10000,
   auth: false, // ask for a password (src/auth.js) before the first tool call; env WIN_INPUT_AUTH
-  authFile: '', // where the password hash and unlock time live; default %APPDATA%\win-input-mcp\auth.json
+  authFile: '', // where the password hash and unlock time live; default %APPDATA%\ispyx\auth.json
 };
 
-export function loadConfig(env = process.env) {
+/**
+ * Reads a setting from the environment: ISPYX_<NAME> wins, the old WIN_INPUT_<NAME> is the fallback.
+ * (The old config variable was WIN_INPUT_MCP_CONFIG; ISPYX_CONFIG falls back to it.)
+ */
+export function env(name, source = process.env) {
+  const v = source[`ISPYX_${name}`];
+  if (v !== undefined && v !== '') return v;
+  const old = source[`WIN_INPUT_${name}`] ?? (name === 'CONFIG' ? source.WIN_INPUT_MCP_CONFIG : undefined);
+  return old === '' ? undefined : old;
+}
+
+export function loadConfig(source = process.env) {
+  const e = (name) => env(name, source);
   let cfg = { ...DEFAULTS };
-  const file = env.WIN_INPUT_MCP_CONFIG || path.join(ROOT, 'config.json');
+  const file = e('CONFIG') || path.join(ROOT, 'config.json');
   if (fs.existsSync(file)) {
     try {
       cfg = { ...cfg, ...JSON.parse(fs.readFileSync(file, 'utf8')) };
@@ -38,17 +50,17 @@ export function loadConfig(env = process.env) {
       throw new Error(`Config file ${file} is not valid JSON: ${e.message}`);
     }
   }
-  if (env.WIN_INPUT_DENYLIST) cfg.denylist = env.WIN_INPUT_DENYLIST.split(',');
+  if (e('DENYLIST')) cfg.denylist = e('DENYLIST').split(',');
   // test-only knob: lets a test server use its own stop chord, so tests never press Alt+Esc,
   // which would also stop every other running server
-  if (env.WIN_INPUT_STOP_CHORD) cfg.stopChord = env.WIN_INPUT_STOP_CHORD;
-  if (env.WIN_INPUT_AUTH) cfg.auth = !/^(0|false|no)$/i.test(env.WIN_INPUT_AUTH);
-  if (env.WIN_INPUT_AUTH_FILE) cfg.authFile = env.WIN_INPUT_AUTH_FILE;
-  if (env.WIN_INPUT_TYPE_SPEED) cfg.typeSpeed = Number(env.WIN_INPUT_TYPE_SPEED);
-  if (env.WIN_INPUT_OVERLAY) cfg.overlay = !/^(0|false|no)$/i.test(env.WIN_INPUT_OVERLAY);
-  if (env.WIN_INPUT_ANIMATIONS) cfg.animations = !/^(0|false|no)$/i.test(env.WIN_INPUT_ANIMATIONS);
+  if (e('STOP_CHORD')) cfg.stopChord = e('STOP_CHORD');
+  if (e('AUTH')) cfg.auth = !/^(0|false|no)$/i.test(e('AUTH'));
+  if (e('AUTH_FILE')) cfg.authFile = e('AUTH_FILE');
+  if (e('TYPE_SPEED')) cfg.typeSpeed = Number(e('TYPE_SPEED'));
+  if (e('OVERLAY')) cfg.overlay = !/^(0|false|no)$/i.test(e('OVERLAY'));
+  if (e('ANIMATIONS')) cfg.animations = !/^(0|false|no)$/i.test(e('ANIMATIONS'));
   cfg.denylist = cfg.denylist.map((s) => String(s).trim().toLowerCase()).filter(Boolean);
-  if (env.WIN_INPUT_LOG) cfg.logPath = env.WIN_INPUT_LOG;
+  if (e('LOG')) cfg.logPath = e('LOG');
   cfg.logPath = path.resolve(ROOT, cfg.logPath);
   return cfg;
 }
@@ -242,7 +254,7 @@ export class Guard {
     try {
       fs.appendFileSync(this.config.logPath, JSON.stringify({ time: new Date().toISOString(), ...entry }) + '\n');
     } catch (e) {
-      process.stderr.write(`win-input-mcp: could not write action log: ${e.message}\n`);
+      process.stderr.write(`ispyx: could not write action log: ${e.message}\n`);
     }
   }
 }

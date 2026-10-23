@@ -64,7 +64,7 @@ try {
   const first = await drive('-Read');
   check('window offers the saved default (2 hours)', first.startsWith('2|hours'), first);
   const fg = w.foregroundWindow();
-  check('the password window comes up in front (foreground)', !!fg && w.getTitle(fg) === 'win-input-mcp', fg ? w.getTitle(fg) : 'none');
+  check('the password window comes up in front (foreground)', !!fg && w.getTitle(fg) === 'ispyx', fg ? w.getTitle(fg) : 'none');
   await drive('-Password', 'wrong-1', '-Value', '3');
   await w.sleep(2500);
   const second = await drive('-Read');

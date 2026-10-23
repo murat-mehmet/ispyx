@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// win-input-mcp: local Windows desktop-control MCP server. stdio only; opens no network port.
+// ispyx: local Windows desktop-control MCP server. stdio only; opens no network port.
 import fs from 'node:fs';
 import { spawn } from 'node:child_process';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -28,7 +28,7 @@ function initCore() {
   guard = new Guard(config);
   overlay = new Overlay({ enabled: config.overlay, stopLabel: guard.stopLabel });
   guard.overlay = overlay;
-  // second stop press: order every other win-input-mcp server to exit, then leave
+  // second stop press: order every other ispyx server to exit, then leave
   guard.onShutdown = () => { owner?.broadcastShutdown(); setTimeout(() => process.exit(0), 300); };
   auth = new Auth({ enabled: config.auth, ...(config.authFile ? { file: config.authFile } : {}) });
   guard.startWatching();
@@ -162,7 +162,7 @@ async function dispatch(name, args) {
       await tryBecomeOwner(); // the owner is gone: take over
     }
   }
-  return { isError: true, content: [{ type: 'text', text: 'Could not reach or become the win-input-mcp server. Try again.' }] };
+  return { isError: true, content: [{ type: 'text', text: 'Could not reach or become the ispyx server. Try again.' }] };
 }
 
 const target = {
@@ -188,7 +188,7 @@ const MOD_VK = { ctrl: 0x11, shift: 0x10, alt: 0x12, win: 0x5b };
 const text = (s) => ({ content: [{ type: 'text', text: s }] });
 const json = (o) => text(JSON.stringify(o));
 
-const server = new McpServer({ name: 'win-input-mcp', version: '2.0.0' });
+const server = new McpServer({ name: 'ispyx', version: '2.0.0' });
 {
   const register = server.registerTool.bind(server);
   server.registerTool = (name, cfg, handler) => {
@@ -697,9 +697,9 @@ server.registerTool('get_clipboard', {
 
 function setImageClipboard(imagePath) {
   return new Promise((resolve, reject) => {
-    const script = "Add-Type -AssemblyName System.Windows.Forms,System.Drawing;$i=[System.Drawing.Image]::FromFile($env:WIN_INPUT_IMG);[System.Windows.Forms.Clipboard]::SetImage($i);$i.Dispose()";
+    const script = "Add-Type -AssemblyName System.Windows.Forms,System.Drawing;$i=[System.Drawing.Image]::FromFile($env:ISPYX_IMG);[System.Windows.Forms.Clipboard]::SetImage($i);$i.Dispose()";
     const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-STA', '-Command', script], {
-      env: { ...process.env, WIN_INPUT_IMG: imagePath }, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'],
+      env: { ...process.env, ISPYX_IMG: imagePath }, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'],
     });
     let err = '';
     ps.stderr.on('data', (d) => (err += d));

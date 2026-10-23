@@ -1,4 +1,4 @@
-# Test helper: fills in and submits the win-input-mcp password dialog with plain window messages.
+# Test helper: fills in and submits the ispyx password dialog with plain window messages.
 # (WinForms controls expose no useful UI Automation ids, so this walks the child windows instead.)
 param(
   [string]$Password = '',
@@ -28,7 +28,7 @@ public static class W {
   public static string Cls(IntPtr h) { var s = new StringBuilder(256); GetClassName(h, s, 256); return s.ToString(); }
   public static IntPtr FindForm() {
     IntPtr found = IntPtr.Zero;
-    EnumWindows((h, l) => { if (IsWindowVisible(h) && Text(h) == "win-input-mcp" && Cls(h).StartsWith("WindowsForms")) { found = h; return false; } return true; }, IntPtr.Zero);
+    EnumWindows((h, l) => { if (IsWindowVisible(h) && Text(h) == "ispyx" && Cls(h).StartsWith("WindowsForms")) { found = h; return false; } return true; }, IntPtr.Zero);
     return found;
   }
   /// class-substring filtered children as "handle|class|text|top" lines
