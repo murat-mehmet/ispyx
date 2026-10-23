@@ -102,13 +102,14 @@ export function renderBand(px, width, height, stride = width) {
   const edgeFade = Math.max(8, width * 0.06);
   for (let y = 0; y < height; y++) {
     const d = height - 1 - y; // distance above the leading edge
-    const k = d < 2 ? 1 : 0.6 * Math.exp(-d / 16);
+    const k = d < 3 ? 1 : 0.6 * Math.exp(-d / 16);
     for (let x = 0; x < width; x++) {
       const e = smooth(clamp(Math.min(x, width - 1 - x) / edgeFade));
       const hit = Math.exp(-(((x - width / 2) / (width * 0.035)) ** 2)) * Math.exp(-d / 6); // where the laser lands
       const a = clamp(k * e + 0.9 * hit);
-      const core = clamp((d < 2 ? 0.75 : 0) + hit);
-      const r = mix(40, 255, core), g = mix(230, 255, core), b = mix(110, 255, core);
+      const core = clamp((d < 3 ? 0.75 : 0) + hit);
+      let r = mix(40, 255, core), g = mix(230, 255, core), b = mix(110, 255, core);
+      if (d < 1.2) { r = 14; g = 70; b = 40; } // dark leading edge, so the line also shows on white
       const i = (y * stride + x) * 4;
       px[i] = b * a; px[i + 1] = g * a; px[i + 2] = r * a; px[i + 3] = a * 255;
     }
@@ -120,14 +121,15 @@ export function renderBand(px, width, height, stride = width) {
  * (gx, gy) in -1..1 is where it looks.
  */
 /** Where the pupil centre is inside the eye sprite (sprite pixels). */
+const eyeR = (size) => size / 2 - 7; // the rest of the sprite holds the outline ring and its glow
 export function pupilPos(size, gx, gy) {
-  const R = size / 2 - 2;
+  const R = eyeR(size);
   return { x: size / 2 + gx * 0.36 * R + gx * 0.07 * R, y: size / 2 + gy * 0.40 * R + gy * 0.09 * R };
 }
 
 export function renderEye(px, size, open, gx, gy, glow = 0) {
   const c = size / 2;
-  const R = size / 2 - 2;
+  const R = eyeR(size);
   const lid = Math.max(open, 0.02);
   const ix = c + gx * 0.36 * R, iy = c + gy * 0.40 * R;
   const rxI = 0.46 * R * (1 - 0.2 * Math.abs(gx)), ryI = 0.46 * R * (1 - 0.2 * Math.abs(gy));
@@ -140,7 +142,16 @@ export function renderEye(px, size, open, gx, gy, glow = 0) {
       const sd = Math.hypot(dx, dy / lid) - R;
       const a = clamp(0.5 - sd);
       const i = (y * size + x) * 4;
-      if (a <= 0) { px[i] = px[i + 1] = px[i + 2] = px[i + 3] = 0; continue; }
+      // outline ring (dark, so the white eyeball shows on a white screen) with a soft green glow outside it
+      const darkA = clamp(2.5 + 0.5 - sd) * 0.92;
+      const glowA = 0.7 * Math.exp(-(((sd - 3.5) / 1.6) ** 2));
+      if (a <= 0) {
+        if (sd > 7 || (darkA <= 0 && glowA < 0.01)) { px[i] = px[i + 1] = px[i + 2] = px[i + 3] = 0; continue; }
+        // glow under dark, both over transparent (premultiplied)
+        const ga = glowA * (1 - darkA);
+        px[i] = (110 * ga + 22 * darkA); px[i + 1] = (255 * ga + 70 * darkA); px[i + 2] = (60 * ga + 40 * darkA); px[i + 3] = (ga + darkA) * 255;
+        continue;
+      }
       const n = Math.hypot(dx, dy) / R;
       const low = smooth(clamp((dy / R - 0.1) / 0.7));
       let r = 254 - 30 * n ** 3 - 22 * low, g = 255 - 24 * n ** 3 - 4 * low, b = 254 - 30 * n ** 3 - 20 * low;
@@ -163,7 +174,9 @@ export function renderEye(px, size, open, gx, gy, glow = 0) {
       }
       const ah = clamp((1 - Math.hypot(x + 0.5 - hx, y + 0.5 - hy) / hr) * hr * 0.5) * 0.42;
       if (ah > 0) { r = mix(r, 255, ah); g = mix(g, 255, ah); b = mix(b, 255, ah); }
-      px[i] = b * a; px[i + 1] = g * a; px[i + 2] = r * a; px[i + 3] = a * 255;
+      // eye over its dark outline: at the rim (a < 1) the ring shows through
+      const ra = a + darkA * (1 - a);
+      px[i] = b * a + 40 * darkA * (1 - a); px[i + 1] = g * a + 70 * darkA * (1 - a); px[i + 2] = r * a + 22 * darkA * (1 - a); px[i + 3] = ra * 255;
     }
   }
 }
@@ -199,9 +212,9 @@ export function drawWedge(px, width, height, ax, ay, x1, x2, ey) {
   }
 }
 
-/** A glowing green frame just inside the rectangle's edges, with brighter corner brackets. Only the border strip is touched. */
+/** A green frame on the rectangle's edges: dark outer line (shows on white), bright core, glow inward, thick corner brackets. */
 export function renderFrame(px, width, height) {
-  const reach = 40, arm = Math.min(34, Math.floor(Math.min(width, height) / 3));
+  const reach = 34, arm = Math.min(60, Math.floor(Math.min(width, height) / 3));
   px.fill(0, 0, width * height * 4);
   for (let y = 0; y < height; y++) {
     const dy = Math.min(y, height - 1 - y);
@@ -210,14 +223,15 @@ export function renderFrame(px, width, height) {
       const dx = Math.min(x, width - 1 - x);
       if (!full && dx >= reach && width - reach - 1 > x) { x = width - reach - 1; continue; } // skip the empty middle
       const d = Math.min(dx, dy);
-      const corner = dx < arm && dy < arm ? 1 : 0; // inside a corner square: the bracket is the edge pair there
-      const bracket = (dx < 3 && (y < arm || y >= height - arm)) || (dy < 3 && (x < arm || x >= width - arm)) ? 1 : 0;
-      let a = 0.5 * Math.exp(-d / 7) + (d < 1.5 ? 0.5 : 0) + (bracket ? 0.5 : 0) + corner * 0 ;
-      a = clamp(a);
-      if (a <= 0.002) continue;
-      const k = clamp((d < 1.5 ? 0.6 : 0) + bracket * 0.5);
+      const nearCorner = (dx < arm && dy < reach) || (dy < arm && dx < reach);
+      const thick = nearCorner ? 9 : 5; // corner brackets are thicker
+      let r, g, bl, a;
+      if (d < 2.5) { r = 14; g = 50; bl = 28; a = 0.95; } // dark outline
+      else if (d < 2.5 + thick) { const t = (d - 2.5) / thick; r = mix(150, 60, t); g = 255; bl = mix(190, 110, t); a = 1; } // bright core
+      else { const k = Math.exp(-(d - 2.5 - thick) / 10); r = 60; g = 255; bl = 110; a = 0.5 * k; }
+      if (a < 0.01) continue;
       const i = (y * width + x) * 4;
-      px[i] = mix(110, 255, k) * a; px[i + 1] = 255 * a; px[i + 2] = mix(60, 255, k) * a; px[i + 3] = a * 255;
+      px[i] = bl * a; px[i + 1] = g * a; px[i + 2] = r * a; px[i + 3] = a * 255;
     }
   }
 }
@@ -228,7 +242,7 @@ export const SCAN_TOTAL_MS = T_OPEN + T_SCAN + T_CLOSE;
 
 let flip = false; // alternates the side of the eye between screenshots
 
-export const FLASH_TOTAL_MS = 520;
+export const FLASH_TOTAL_MS = 760;
 
 export class ScanAnimation {
   constructor({ enabled = true } = {}) {
@@ -251,7 +265,8 @@ export class ScanAnimation {
       for (;;) {
         const t = performance.now() - t0;
         if (t >= FLASH_TOTAL_MS || cancelled()) break;
-        const a = t < 90 ? t / 90 : t < 250 ? 1 : 1 - ease((t - 250) / (FLASH_TOTAL_MS - 250));
+        // on, a short dip, on again (a double blink catches the eye), then fade
+        const a = t < 80 ? t / 80 : t < 280 ? 1 : t < 380 ? 1 - 0.65 * Math.sin(((t - 280) / 100) * Math.PI) : t < 480 ? 1 : 1 - ease((t - 480) / (FLASH_TOTAL_MS - 480));
         layer.present(left, top, 255 * a);
         await new Promise((r) => setTimeout(r, 16));
       }
