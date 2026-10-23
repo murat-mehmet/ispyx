@@ -19,8 +19,8 @@ const DEFAULTS = {
   overlay: true, // banner on screen while a tool runs
   animations: true, // eye + scan line after a screenshot (the next call waits for it)
   typeSpeed: 1, // default speed multiplier for typing waits (2 = half the waits, 0 = fixed 8 ms); env WIN_INPUT_TYPE_SPEED
-  typeMinMs: 60,
-  typeMaxMs: 200,
+  typeMinMs: 25,
+  typeMaxMs: 90,
   typeCapMs: 60000, // longer texts are sped up to finish within this
   moveMinMs: 300,
   moveMaxMs: 1000,
