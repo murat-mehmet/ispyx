@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import * as w from '../src/win32.js';
+import fs from 'node:fs';
 import { SCAN_TOTAL_MS } from '../src/scan.js';
+import { shrinkToPng } from '../src/image.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 w.init();
@@ -31,8 +33,11 @@ try {
   check('screenshot result comes back at once (before the animation ends)', !shot.isError && back < SCAN_TOTAL_MS - 400, `${Math.round(back)} ms`);
   await sleep(500);
   check('animation windows are on screen during it', !!scanWindows());
+  await sleep(300); // mid-sweep frame for a look: test/out/scan-frame.png
+  fs.mkdirSync('test/out', { recursive: true });
+  fs.writeFileSync('test/out/scan-frame.png', shrinkToPng(w.captureScreenRect({ left: region.x - 40, top: region.y - 120, width: region.width + 80, height: region.height + 160 }), 700).png);
   // green iris pixels somewhere in the eye area (top centre of the region)
-  const eyeCap = w.captureScreenRect({ left: region.x + 150, top: region.y + 20, width: 200, height: 180 });
+  const eyeCap = w.captureScreenRect({ left: region.x + 150, top: region.y - 100, width: 200, height: 180 });
   let purple = 0;
   for (let i = 0; i < eyeCap.bits.length; i += 4) { const b = eyeCap.bits[i], g = eyeCap.bits[i + 1], r = eyeCap.bits[i + 2]; if (g > 150 && g - r > 70 && g - b > 60) purple++; }
   check('the eye (green iris) is drawn over the region', purple > 150, `${purple} green pixels`);
