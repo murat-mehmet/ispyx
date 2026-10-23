@@ -7,7 +7,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import * as w from '../src/win32.js';
 import fs from 'node:fs';
-import { SCAN_TOTAL_MS, FLASH_TOTAL_MS, ScanAnimation, RIPPLE_MS, renderRipple } from '../src/scan.js';
+import { SCAN_TOTAL_MS, FLASH_TOTAL_MS, ScanAnimation, RIPPLE_MS, renderRipple, keyLabels } from '../src/scan.js';
 import { shrinkToPng } from '../src/image.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -128,6 +128,21 @@ try {
     stop();
     await run;
     check('scroll chevrons are gone afterwards', !scanWindows());
+  }
+  // press_keys key caps (drawn directly, no key is pressed)
+  {
+    const anim = new ScanAnimation({ enabled: true });
+    const mon = w.listMonitors().find((m) => m.primary);
+    const labels = keyLabels('ctrl+shift+t alt+left enter');
+    const run = anim.keycaps(labels, { left: mon.left, top: mon.top, width: mon.width, height: mon.height });
+    await sleep(260);
+    const cap = w.captureScreenRect({ left: mon.left + Math.round(mon.width / 2) - 330, top: mon.top + mon.height - 190, width: 660, height: 110 });
+    let lit = 0;
+    for (let i = 0; i < cap.bits.length; i += 4) { const b = cap.bits[i], g = cap.bits[i + 1], r = cap.bits[i + 2]; if (g > 200 && g - r > 90 && g - b > 60) lit++; }
+    fs.writeFileSync('test/out/keycaps.png', shrinkToPng(cap, 660).png);
+    check('key caps are drawn near the bottom of the screen', !!scanWindows() && lit > 200, `${lit} cap-border pixels; labels ${JSON.stringify(labels)}`);
+    await run;
+    check('key caps are gone afterwards', !scanWindows());
   }
   // focus_window on the window that already has focus (changes nothing): green frame, short wait
   const fg = w.foregroundWindow();

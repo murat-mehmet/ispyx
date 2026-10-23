@@ -193,3 +193,5 @@ After `screenshot_screen` / `screenshot_window` the result is returned at once, 
 `scroll` shows green chevrons beside the pointer that travel in the scroll direction (up, down, left or right) while the wheel turns, for at least 0.4 s. Like `click`, it holds up only screenshots.
 
 Every pointer glide (the approach of `click`, `scroll`, `mouse_down`, `mouse_up`, `drag`, and `move` itself) leaves the short fading trail; the glide that carries a drag has the drag trail instead.
+
+`press_keys` shows the chords as key caps ("Ctrl" + "C") near the bottom of the monitor the keys go to, for about half a second plus 0.14 s per chord. Like `click`, it holds up only screenshots.

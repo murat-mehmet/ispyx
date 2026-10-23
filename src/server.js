@@ -13,7 +13,7 @@ import { curvedPath, ease, randomDuration, typingDelays } from './motion.js';
 import { Overlay } from './overlay.js';
 import { installStopHotkey } from './hotkey.js';
 import { Auth } from './auth.js';
-import { ScanAnimation } from './scan.js';
+import { ScanAnimation, keyLabels } from './scan.js';
 import { pipeName, listenOwner, callOwner, watchOwner, OwnerGone } from './ipc.js';
 
 if (process.platform !== 'win32') {
@@ -86,6 +86,18 @@ function playWheelCue(p, vert, horiz) {
   const run = scan.wheelCue({ x: p.sx, y: p.sy }, Math.sign(vert), Math.sign(horiz), speed, stopped, () => guard.epoch !== epoch).finally(() => effects.delete(run));
   effects.add(run);
   return stop;
+}
+/** press_keys: key caps near the bottom of the monitor holding the foreground window. */
+function playKeycaps(keys) {
+  const epoch = guard.epoch;
+  const fg = w.foregroundWindow();
+  const r = fg ? w.getRect(fg) : null;
+  const cx = r ? r.left + r.width / 2 : 0, cy = r ? r.top + r.height / 2 : 0;
+  const mons = w.listMonitors();
+  const m = mons.find((q) => cx >= q.left && cx < q.left + q.width && cy >= q.top && cy < q.top + q.height) ?? mons.find((q) => q.primary) ?? mons[0];
+  if (!m) return;
+  const run = scan.keycaps(keyLabels(keys), { left: m.left, top: m.top, width: m.width, height: m.height }, () => guard.epoch !== epoch).finally(() => effects.delete(run));
+  effects.add(run);
 }
 /** A screenshot must not catch a running effect. */
 async function waitForEffects() {
@@ -590,6 +602,7 @@ server.registerTool('press_keys', {
   const chords = parseKeys(args.keys);
   await keyboardTarget(args, entry);
   if (chords.some(insertsContent)) assertNotPassword();
+  playKeycaps(args.keys);
   for (const c of chords) {
     guard.checkKill();
     w.pressVirtualKeys(c);

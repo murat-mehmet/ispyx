@@ -38,6 +38,11 @@ const f = {
   SelectObject: gdi32.func('intptr_t SelectObject(intptr_t dc, intptr_t o)'),
   DeleteObject: gdi32.func('bool DeleteObject(intptr_t o)'),
   GetModuleHandleW: kernel32.func('intptr_t GetModuleHandleW(str16 n)'),
+  CreateFontW: gdi32.func('intptr_t CreateFontW(int h, int w, int esc, int ori, int weight, uint32 it, uint32 ul, uint32 so, uint32 cs, uint32 op, uint32 clip, uint32 q, uint32 pf, str16 face)'),
+  TextOutW: gdi32.func('bool TextOutW(intptr_t dc, int x, int y, str16 text, int n)'),
+  GetTextExtentPoint32W: gdi32.func('bool GetTextExtentPoint32W(intptr_t dc, str16 text, int n, _Out_ SC_SIZE *size)'),
+  SetBkMode: gdi32.func('int SetBkMode(intptr_t dc, int m)'),
+  SetTextColor: gdi32.func('uint32 SetTextColor(intptr_t dc, uint32 c)'),
 };
 
 const CLASS = 'WinInputMcpScan';
@@ -91,6 +96,31 @@ class Layer {
       f.DestroyWindow(this.hwnd);
     } catch { /* already gone */ }
   }
+}
+
+/** Anti-aliased text as a coverage mask (0-255 per pixel), drawn by GDI white on black and read back. */
+export function textMask(text, heightPx = 22, weight = 600) {
+  const screen = f.GetDC(0);
+  const dc = f.CreateCompatibleDC(screen);
+  const font = f.CreateFontW(-heightPx, 0, 0, 0, weight, 0, 0, 0, 1, 0, 0, 4, 0, 'Segoe UI'); // ANTIALIASED_QUALITY
+  const oldFont = f.SelectObject(dc, font);
+  const size = {};
+  f.GetTextExtentPoint32W(dc, text, text.length, size);
+  const width = Math.max(1, size.cx + 2), height = Math.max(1, size.cy + 2);
+  const out = [null];
+  const bmp = f.CreateDIBSection(screen, { biSize: 40, biWidth: width, biHeight: -height, biPlanes: 1, biBitCount: 32, biCompression: 0, biSizeImage: 0, biXPels: 0, biYPels: 0, biClrUsed: 0, biClrImportant: 0, bmiColors: 0 }, 0, out, 0, 0);
+  const old = f.SelectObject(dc, bmp);
+  const px = new Uint8Array(koffi.view(out[0], width * height * 4));
+  px.fill(0);
+  f.SetBkMode(dc, 1);
+  f.SetTextColor(dc, 0xffffff);
+  f.TextOutW(dc, 1, 1, text, text.length);
+  const mask = new Uint8Array(width * height);
+  for (let i = 0; i < mask.length; i++) mask[i] = Math.max(px[i * 4], px[i * 4 + 1], px[i * 4 + 2]);
+  f.SelectObject(dc, old); f.DeleteObject(bmp);
+  f.SelectObject(dc, oldFont); f.DeleteObject(font);
+  f.DeleteDC(dc); f.ReleaseDC(0, screen);
+  return { width, height, mask };
 }
 
 const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
@@ -271,6 +301,10 @@ export function renderRipple(px, size, t, rings, rgb) {
   }
 }
 
+const KEY_LABELS = { ctrl: 'Ctrl', control: 'Ctrl', shift: 'Shift', alt: 'Alt', win: 'Win', windows: 'Win', meta: 'Win', cmd: 'Win', super: 'Win', enter: 'Enter', return: 'Enter', esc: 'Esc', escape: 'Esc', tab: 'Tab', space: 'Space', backspace: 'Backspace', delete: 'Del', del: 'Del', insert: 'Ins', ins: 'Ins', home: 'Home', end: 'End', pageup: 'PgUp', pgup: 'PgUp', pagedown: 'PgDn', pgdn: 'PgDn', left: '\u2190', up: '\u2191', right: '\u2192', down: '\u2193' };
+/** "ctrl+a ctrl+c" -> [['Ctrl', 'A'], ['Ctrl', 'C']] */
+export const keyLabels = (keys) => keys.trim().split(/\s+/).filter(Boolean).map((chord) => chord.split('+').filter(Boolean).map((k) => KEY_LABELS[k.toLowerCase()] ?? (k.length === 1 ? k.toUpperCase() : k[0].toUpperCase() + k.slice(1))));
+
 const TRAIL_LIFE_MS = 750, TRAIL_FADE_MS = 320;
 
 /** Draws a thick soft line segment into a premultiplied buffer, keeping the stronger alpha where strokes overlap. */
@@ -432,6 +466,70 @@ export class ScanAnimation {
     } catch (e) {
       process.stderr.write(`win-input-mcp: scroll effect failed (${e.message})
 `);
+    } finally {
+      layer?.destroy();
+    }
+  }
+
+  /**
+   * press_keys: key caps ("Ctrl" + "C") appear near the bottom of the screen the keys go to, hold, fade.
+   * `area` is the rectangle (desktop pixels) to centre them in. Never throws.
+   */
+  async keycaps(chords, area, cancelled = () => false) {
+    if (!this.enabled || !chords.length) return;
+    let layer = null;
+    try {
+      ensurePump();
+      const pad = 16, capH = 46, gapPlus = 26, gapChord = 38;
+      const items = chords.map((chord) => chord.map((label) => ({ label, t: textMask(label, 22, 600) })));
+      const plus = textMask('+', 22, 600);
+      const capW = (it) => Math.max(capH, it.t.width + 30);
+      const widths = items.map((chord) => chord.reduce((sum, it) => sum + capW(it), 0) + gapPlus * (chord.length - 1));
+      const total = widths.reduce((a, b) => a + b, 0) + gapChord * (items.length - 1);
+      const W = Math.min(Math.round(total + pad * 2), Math.max(200, area.width - 20)), H = capH + pad * 2;
+      layer = new Layer(W, H);
+      const px = layer.px;
+      const put = (x, y, r, g, b, a) => { // premultiplied "over"
+        if (a <= 0 || x < 0 || y < 0 || x >= W || y >= H) return;
+        const i = (y * W + x) * 4, k = 1 - a;
+        px[i] = b * a + px[i] * k; px[i + 1] = g * a + px[i + 1] * k; px[i + 2] = r * a + px[i + 2] * k; px[i + 3] = a * 255 + px[i + 3] * k;
+      };
+      const drawMask = (m, x0, y0, rgb, alpha = 1) => { for (let y = 0; y < m.height; y++) for (let x = 0; x < m.width; x++) put(x0 + x, y0 + y, rgb[0], rgb[1], rgb[2], (m.mask[y * m.width + x] / 255) * alpha); };
+      let x = Math.round((W - total) / 2);
+      const y0 = pad;
+      items.forEach((chord, ci) => {
+        chord.forEach((it, ki) => {
+          const cw = capW(it);
+          for (let yy = 0; yy < capH; yy++) {
+            for (let xx = 0; xx < cw; xx++) {
+              const dx = Math.min(xx, cw - 1 - xx), dy = Math.min(yy, capH - 1 - yy);
+              const rr = 10, cx = Math.max(0, rr - dx), cy = Math.max(0, rr - dy);
+              const dist = Math.hypot(cx, cy) - rr; // < 0 inside the rounded rectangle
+              const inside = clamp(0.5 - dist);
+              const edge = clamp(0.5 - (Math.abs(dist + 1.2) - 1.2));
+              const top = clamp(1 - yy / capH);
+              put(x + xx, y0 + yy, mix(26, 52, top * 0.5), mix(30, 56, top * 0.5), mix(36, 62, top * 0.5), inside * 0.94);
+              put(x + xx, y0 + yy, 60, 255, 110, edge * inside);
+            }
+          }
+          drawMask(it.t, x + Math.round((cw - it.t.width) / 2), y0 + Math.round((capH - it.t.height) / 2), [245, 250, 247]);
+          x += cw;
+          if (ki < chord.length - 1) { drawMask(plus, x + Math.round((gapPlus - plus.width) / 2), y0 + Math.round((capH - plus.height) / 2), [150, 255, 180]); x += gapPlus; }
+        });
+        if (ci < items.length - 1) x += gapChord;
+      });
+      const left = Math.round(area.left + (area.width - W) / 2), top = Math.round(area.top + area.height - H - 90);
+      const hold = 420 + 140 * chords.length;
+      const t0 = performance.now();
+      for (;;) {
+        const t = performance.now() - t0;
+        if (t >= hold + 260 || cancelled()) break;
+        const a = t < 110 ? ease(t / 110) : t < hold ? 1 : 1 - ease((t - hold) / 260);
+        layer.present(left, top + (1 - Math.min(1, t / 110)) * 14, 255 * a);
+        await new Promise((r) => setTimeout(r, 16));
+      }
+    } catch (e) {
+      process.stderr.write(`win-input-mcp: key effect failed (${e.message})\n`);
     } finally {
       layer?.destroy();
     }
