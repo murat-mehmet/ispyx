@@ -13,10 +13,9 @@
   ],
   "engines": { "node": ">=22" },
   "keywords": ["mcp", "model-context-protocol", "computer-use", "desktop-automation", "windows", "screenshot", "keyboard", "mouse", "claude"],
-  "repository": { "type": "git", "url": "git+https://github.com/<owner>/ispyx.git" },
-  "bugs": { "url": "https://github.com/<owner>/ispyx/issues" },
-  "homepage": "https://github.com/<owner>/ispyx#readme",
-  "_todo": "Replace <owner> in repository/bugs/homepage, choose a license (add a LICENSE file and set \"license\"), then remove \"private\": true to publish.",
+  "repository": { "type": "git", "url": "git+https://github.com/murat-mehmet/ispyx.git" },
+  "bugs": { "url": "https://github.com/murat-mehmet/ispyx/issues" },
+  "homepage": "https://github.com/murat-mehmet/ispyx#readme",
   "scripts": {
     "start": "node src/server.js",
     "test": "node test/unit.js",
@@ -37,8 +36,7 @@
     "ipc-test": "node test/core/ipc-unix.js",
     "darwin-test": "node test/darwin/client.js"
   },
-  "license": "UNLICENSED",
-  "private": true,
+  "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
     "koffi": "^3.3.3",

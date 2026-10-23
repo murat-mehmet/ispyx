@@ -110,7 +110,7 @@ Typical flow: `screenshot_screen`, read coordinates off the image, `click` (with
 ## Development
 
 ```
-git clone https://github.com/<owner>/ispyx
+git clone https://github.com/murat-mehmet/ispyx
 cd ispyx
 npm install
 node src/server.js
