@@ -69,11 +69,11 @@ function playRipple(p, button, rings) {
   effects.add(run);
 }
 /** drag: ring at the start and a trail behind the pointer; the returned function ends it (button released). */
-function playTrail(a, z, button) {
+function playTrail(a, z, button, opts) {
   const epoch = guard.epoch;
   let stop;
   const stopped = new Promise((r) => { stop = r; });
-  const run = scan.trail({ x: a.sx, y: a.sy }, { left: Math.min(a.sx, z.sx), top: Math.min(a.sy, z.sy), right: Math.max(a.sx, z.sx), bottom: Math.max(a.sy, z.sy) }, stopped, () => guard.epoch !== epoch, button).finally(() => effects.delete(run));
+  const run = scan.trail({ x: a.sx, y: a.sy }, { left: Math.min(a.sx, z.sx), top: Math.min(a.sy, z.sy), right: Math.max(a.sx, z.sx), bottom: Math.max(a.sy, z.sy) }, stopped, () => guard.epoch !== epoch, button, opts).finally(() => effects.delete(run));
   effects.add(run);
   return stop;
 }
@@ -414,7 +414,13 @@ server.registerTool('move', {
   const map = await pointMapper(args, entry);
   const p = map(args.x, args.y);
   entry.coords = { x: args.x, y: args.y, screen: { x: p.sx, y: p.sy } };
-  await glide(p, args);
+  const from = w.cursorPos();
+  const stopTrail = Math.hypot(p.sx - from.x, p.sy - from.y) >= 4 ? playTrail({ sx: from.x, sy: from.y }, p, 'left', { marker: false, life: 520 }) : () => {};
+  try {
+    await glide(p, args);
+  } finally {
+    stopTrail();
+  }
   return json({ ok: true, screen: { x: p.sx, y: p.sy } });
 }));
 

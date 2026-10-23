@@ -98,6 +98,21 @@ try {
     check('drag trail is gone after release', !scanWindows());
     w.mouseMoveTo(home.x, home.y);
   }
+  // move: trail without a start marker
+  {
+    const home = w.cursorPos();
+    const anim = new ScanAnimation({ enabled: true });
+    const a = { x: v.x + 800, y: v.y + 500 }, z = { x: v.x + 1000, y: v.y + 600 };
+    w.mouseMoveTo(a.x, a.y);
+    let stop; const stopped = new Promise((r) => { stop = r; });
+    const run = anim.trail(a, { left: a.x, top: a.y, right: z.x, bottom: z.y }, stopped, () => false, 'left', { marker: false, life: 520 });
+    for (let i = 1; i <= 20; i++) { w.mouseMoveTo(Math.round(a.x + ((z.x - a.x) * i) / 20), Math.round(a.y + ((z.y - a.y) * i) / 20)); await sleep(16); }
+    check('move trail is on screen while the pointer moves', !!scanWindows());
+    stop();
+    await run;
+    check('move trail and arrival ring are gone afterwards', !scanWindows());
+    w.mouseMoveTo(home.x, home.y);
+  }
   // focus_window on the window that already has focus (changes nothing): green frame, short wait
   const fg = w.foregroundWindow();
   if (fg) {

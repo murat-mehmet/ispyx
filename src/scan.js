@@ -327,7 +327,7 @@ export class ScanAnimation {
    * fading with age. When `stopped` resolves (button released) the trail fades out and rings mark the end.
    * `bounds` {left, top, right, bottom}: where the drag can go. Never throws.
    */
-  async trail(start, bounds, stopped, cancelled = () => false, button = 'left') {
+  async trail(start, bounds, stopped, cancelled = () => false, button = 'left', { marker: showMarker = true, life = TRAIL_LIFE_MS } = {}) {
     if (!this.enabled) return;
     let layer = null;
     let ended = false;
@@ -358,14 +358,14 @@ export class ScanAnimation {
         for (let pass = 0; pass < 2; pass++) {
           for (let k = 1; k < pts.length; k++) {
             const age = (endAt ? Math.min(t, endAt) : t) - pts[k].t;
-            const a = clamp(1 - age / TRAIL_LIFE_MS) * fade;
+            const a = clamp(1 - age / life) * fade;
             if (a <= 0.02) continue;
             const A = pts[k - 1], B = pts[k];
             if (pass === 0) stroke(layer.px, layer.width, layer.height, A.x - left, A.y - top, B.x - left, B.y - top, 5.2, [14, 50, 28], a * 0.75);
             else stroke(layer.px, layer.width, layer.height, A.x - left, A.y - top, B.x - left, B.y - top, 3, k % 6 < 5 ? rgb : [255, 255, 255], a);
           }
         }
-        marker(layer.px, layer.width, layer.height, start.x - left, start.y - top, rgb);
+        if (showMarker) marker(layer.px, layer.width, layer.height, start.x - left, start.y - top, rgb);
         layer.present(left, top, 255 * fade);
         await new Promise((r) => setTimeout(r, 16));
       }
