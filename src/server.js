@@ -13,6 +13,7 @@ import { curvedPath, ease, randomDuration, typingDelays } from './motion.js';
 import { Overlay } from './overlay.js';
 import { installStopHotkey } from './hotkey.js';
 import { Auth } from './auth.js';
+import { ScanAnimation } from './scan.js';
 import { pipeName, listenOwner, callOwner, watchOwner, OwnerGone } from './ipc.js';
 
 if (process.platform !== 'win32') {
@@ -23,6 +24,8 @@ if (process.platform !== 'win32') {
 const config = loadConfig();
 // Only the process that owns the pipe (see ipc.js) does the work; the others forward their tool calls to it.
 let guard, overlay, auth, stopHook = null;
+const scan = new ScanAnimation({ enabled: config.animations });
+let pendingAnim = null; // the screenshot animation in progress: the next queued call waits for it
 let owner = null;
 const pipe = pipeName();
 
@@ -46,6 +49,12 @@ async function tryBecomeOwner() {
   return !!owner;
 }
 
+/** After a capture: eye and scan line over the captured region. Returns at once; later calls queue behind it. */
+function playScan(rect) {
+  const epoch = guard.epoch;
+  pendingAnim = scan.play(rect, () => guard.epoch !== epoch);
+}
+
 const handlers = new Map();
 let chain = Promise.resolve();
 const UNQUEUED = new Set(['wait']);
@@ -57,7 +66,7 @@ function runTool(name, args) {
   const call = () => callContext.run(ctx, () => h(args));
   if (UNQUEUED.has(name)) return call();
   const p = chain.then(call);
-  chain = p.catch(() => {});
+  chain = p.catch(() => {}).then(() => { const a = pendingAnim; pendingAnim = null; return a; });
   return p;
 }
 
@@ -294,6 +303,7 @@ server.registerTool('screenshot_window', {
     if (!cropped) throw new ToolError(`Region is outside the window (the window is ${cap.width}x${cap.height} px, region starts at ${args.region.x},${args.region.y}).`);
     cap = cropped;
   }
+  playScan({ left: cap.rect.left + (cap.region?.x ?? 0), top: cap.rect.top + (cap.region?.y ?? 0), width: cap.width, height: cap.height });
   const img = shrinkToPng(cap, args.maxWidth ?? 1280);
   guard.shots.set(win.hwnd, { scale: img.scale, ox: cap.region?.x ?? 0, oy: cap.region?.y ?? 0 });
   guard.lastWindow = win.hwnd;
@@ -332,6 +342,7 @@ server.registerTool('screenshot_screen', {
   }
   entry.rect = rect;
   const cap = await overlay.hiddenDuring(() => w.captureScreenRect(rect));
+  playScan(rect);
   const img = shrinkToPng(cap, args.maxWidth ?? 1280);
   guard.lastShot = { rect, scale: img.scale };
   return {

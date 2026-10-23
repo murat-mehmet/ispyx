@@ -17,6 +17,7 @@ const DEFAULTS = {
   logPath: path.join(ROOT, 'logs', 'actions.jsonl'),
   stopChord: 'alt+esc', // emergency stop keys (env WIN_INPUT_STOP_CHORD, meant for tests)
   overlay: true, // banner on screen while a tool runs
+  animations: true, // eye + scan line after a screenshot (the next call waits for it)
   typeSpeed: 1, // default speed multiplier for typing waits (2 = half the waits, 0 = fixed 8 ms); env WIN_INPUT_TYPE_SPEED
   typeMinMs: 60,
   typeMaxMs: 200,
@@ -46,6 +47,7 @@ export function loadConfig(env = process.env) {
   if (env.WIN_INPUT_AUTH_FILE) cfg.authFile = env.WIN_INPUT_AUTH_FILE;
   if (env.WIN_INPUT_TYPE_SPEED) cfg.typeSpeed = Number(env.WIN_INPUT_TYPE_SPEED);
   if (env.WIN_INPUT_OVERLAY) cfg.overlay = !/^(0|false|no)$/i.test(env.WIN_INPUT_OVERLAY);
+  if (env.WIN_INPUT_ANIMATIONS) cfg.animations = !/^(0|false|no)$/i.test(env.WIN_INPUT_ANIMATIONS);
   cfg.denylist = cfg.denylist.map((s) => String(s).trim().toLowerCase()).filter(Boolean);
   if (env.WIN_INPUT_LOG) cfg.logPath = env.WIN_INPUT_LOG;
   cfg.logPath = path.resolve(ROOT, cfg.logPath);
