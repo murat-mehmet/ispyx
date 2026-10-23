@@ -25,3 +25,4 @@ export const dataDir = () => {
   } catch { /* best effort: a fresh folder just asks for a new password */ }
   return dir;
 };
+export { Layer, textMask } from './layer.js';

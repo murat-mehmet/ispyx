@@ -1,127 +1,7 @@
 // Screenshot animation: after a capture an eye opens at the top of the captured region, looks down and follows
 // a glowing green scan line that sweeps the region from top to bottom. Two click-through, per-pixel-alpha windows;
 // pixels are drawn in software into DIB sections, so nothing here depends on GDI+.
-import koffi from 'koffi';
-import { ensurePump } from '../platform/win32/pump.js';
-import * as w from '../platform/win32/win32.js';
-
-const user32 = koffi.load('user32.dll');
-const gdi32 = koffi.load('gdi32.dll');
-const kernel32 = koffi.load('kernel32.dll');
-
-const POINT = koffi.struct('SC_POINT', { x: 'int32', y: 'int32' });
-const SIZE = koffi.struct('SC_SIZE', { cx: 'int32', cy: 'int32' });
-const BLEND = koffi.struct('SC_BLEND', { op: 'uint8', flags: 'uint8', alpha: 'uint8', format: 'uint8' });
-const BITMAPINFO = koffi.struct('SC_BITMAPINFO', {
-  biSize: 'uint32', biWidth: 'int32', biHeight: 'int32', biPlanes: 'uint16', biBitCount: 'uint16', biCompression: 'uint32',
-  biSizeImage: 'uint32', biXPels: 'int32', biYPels: 'int32', biClrUsed: 'uint32', biClrImportant: 'uint32', bmiColors: 'uint32',
-});
-const WndProc = koffi.proto('intptr_t ScWndProc(intptr_t h, uint32 msg, uintptr_t wp, intptr_t lp)');
-const WNDCLASSEXW = koffi.struct('SC_WNDCLASSEXW', {
-  cbSize: 'uint32', style: 'uint32', lpfnWndProc: koffi.pointer(WndProc), cbClsExtra: 'int32', cbWndExtra: 'int32',
-  hInstance: 'intptr_t', hIcon: 'intptr_t', hCursor: 'intptr_t', hbrBackground: 'intptr_t',
-  lpszMenuName: 'str16', lpszClassName: 'str16', hIconSm: 'intptr_t',
-});
-
-const f = {
-  RegisterClassExW: user32.func('uint16 RegisterClassExW(SC_WNDCLASSEXW *c)'),
-  CreateWindowExW: user32.func('intptr_t CreateWindowExW(uint32 ex, str16 cls, str16 title, uint32 style, int x, int y, int w, int h, intptr_t parent, intptr_t menu, intptr_t inst, intptr_t param)'),
-  DefWindowProcW: user32.func('intptr_t DefWindowProcW(intptr_t h, uint32 msg, uintptr_t wp, intptr_t lp)'),
-  DestroyWindow: user32.func('bool DestroyWindow(intptr_t h)'),
-  ShowWindow: user32.func('bool ShowWindow(intptr_t h, int cmd)'),
-  UpdateLayeredWindow: user32.func('bool UpdateLayeredWindow(intptr_t h, intptr_t dst, SC_POINT *pos, SC_SIZE *size, intptr_t src, SC_POINT *from, uint32 key, SC_BLEND *blend, uint32 flags)'),
-  GetDC: user32.func('intptr_t GetDC(intptr_t h)'),
-  ReleaseDC: user32.func('int ReleaseDC(intptr_t h, intptr_t dc)'),
-  CreateCompatibleDC: gdi32.func('intptr_t CreateCompatibleDC(intptr_t dc)'),
-  DeleteDC: gdi32.func('bool DeleteDC(intptr_t dc)'),
-  CreateDIBSection: gdi32.func('intptr_t CreateDIBSection(intptr_t dc, SC_BITMAPINFO *bi, uint32 usage, _Out_ void **bits, intptr_t section, uint32 offset)'),
-  SelectObject: gdi32.func('intptr_t SelectObject(intptr_t dc, intptr_t o)'),
-  DeleteObject: gdi32.func('bool DeleteObject(intptr_t o)'),
-  GetModuleHandleW: kernel32.func('intptr_t GetModuleHandleW(str16 n)'),
-  CreateFontW: gdi32.func('intptr_t CreateFontW(int h, int w, int esc, int ori, int weight, uint32 it, uint32 ul, uint32 so, uint32 cs, uint32 op, uint32 clip, uint32 q, uint32 pf, str16 face)'),
-  TextOutW: gdi32.func('bool TextOutW(intptr_t dc, int x, int y, str16 text, int n)'),
-  GetTextExtentPoint32W: gdi32.func('bool GetTextExtentPoint32W(intptr_t dc, str16 text, int n, _Out_ SC_SIZE *size)'),
-  SetBkMode: gdi32.func('int SetBkMode(intptr_t dc, int m)'),
-  SetTextColor: gdi32.func('uint32 SetTextColor(intptr_t dc, uint32 c)'),
-};
-
-const CLASS = 'WinInputMcpScan';
-let proc = null;
-function registerClass() {
-  if (proc) return;
-  proc = koffi.register((h, msg, wp, lp) => (msg === 0x84 ? -1 : f.DefWindowProcW(h, msg, wp, lp)), koffi.pointer(WndProc));
-  f.RegisterClassExW({
-    cbSize: koffi.sizeof(WNDCLASSEXW), style: 0, lpfnWndProc: proc, cbClsExtra: 0, cbWndExtra: 0, hInstance: f.GetModuleHandleW(null),
-    hIcon: 0, hCursor: 0, hbrBackground: 0, lpszMenuName: null, lpszClassName: CLASS, hIconSm: 0,
-  });
-}
-
-/** One layered window with a premultiplied-BGRA pixel buffer. */
-class Layer {
-  constructor(width, height) {
-    registerClass();
-    this.width = width;
-    this.height = height;
-    // TOPMOST | TOOLWINDOW | LAYERED | TRANSPARENT (click-through) | NOACTIVATE ; WS_POPUP
-    this.hwnd = f.CreateWindowExW(0x08 | 0x80 | 0x80000 | 0x20 | 0x08000000, CLASS, '', 0x80000000, 0, 0, width, height, 0, 0, f.GetModuleHandleW(null), 0);
-    if (!this.hwnd) throw new Error('CreateWindowEx failed');
-    const screen = f.GetDC(0);
-    this.dc = f.CreateCompatibleDC(screen);
-    const out = [null];
-    this.bmp = f.CreateDIBSection(screen, { biSize: 40, biWidth: width, biHeight: -height, biPlanes: 1, biBitCount: 32, biCompression: 0, biSizeImage: 0, biXPels: 0, biYPels: 0, biClrUsed: 0, biClrImportant: 0, bmiColors: 0 }, 0, out, 0, 0);
-    f.ReleaseDC(0, screen);
-    if (!this.bmp || !out[0]) throw new Error('CreateDIBSection failed');
-    this.old = f.SelectObject(this.dc, this.bmp);
-    this.px = new Uint8Array(koffi.view(out[0], width * height * 4));
-    this.shown = false;
-  }
-
-  /** Moves the window to (x, y) and shows the current pixels at constant opacity `alpha` (0-255). */
-  /** Shows the top-left `width` x `height` part of the buffer at (x, y) with constant opacity `alpha` (0-255). */
-  present(x, y, alpha, height = this.height, width = this.width, srcY = 0) {
-    f.UpdateLayeredWindow(this.hwnd, 0, { x: Math.round(x), y: Math.round(y) }, { cx: Math.max(1, Math.min(this.width, Math.round(width))), cy: Math.max(1, Math.min(this.height, Math.round(height))) }, this.dc, { x: 0, y: Math.max(0, Math.round(srcY)) }, 0,
-      { op: 0, flags: 0, alpha: Math.max(0, Math.min(255, Math.round(alpha))), format: 1 }, 2); // ULW_ALPHA, AC_SRC_ALPHA
-    if (!this.shown) {
-      f.ShowWindow(this.hwnd, 4); // SW_SHOWNOACTIVATE
-      this.shown = true;
-    }
-  }
-
-  destroy() {
-    try {
-      f.ShowWindow(this.hwnd, 0);
-      f.SelectObject(this.dc, this.old);
-      f.DeleteObject(this.bmp);
-      f.DeleteDC(this.dc);
-      f.DestroyWindow(this.hwnd);
-    } catch { /* already gone */ }
-  }
-}
-
-/** Anti-aliased text as a coverage mask (0-255 per pixel), drawn by GDI white on black and read back. */
-export function textMask(text, heightPx = 22, weight = 600) {
-  const screen = f.GetDC(0);
-  const dc = f.CreateCompatibleDC(screen);
-  const font = f.CreateFontW(-heightPx, 0, 0, 0, weight, 0, 0, 0, 1, 0, 0, 4, 0, 'Segoe UI'); // ANTIALIASED_QUALITY
-  const oldFont = f.SelectObject(dc, font);
-  const size = {};
-  f.GetTextExtentPoint32W(dc, text, text.length, size);
-  const width = Math.max(1, size.cx + 2), height = Math.max(1, size.cy + 2);
-  const out = [null];
-  const bmp = f.CreateDIBSection(screen, { biSize: 40, biWidth: width, biHeight: -height, biPlanes: 1, biBitCount: 32, biCompression: 0, biSizeImage: 0, biXPels: 0, biYPels: 0, biClrUsed: 0, biClrImportant: 0, bmiColors: 0 }, 0, out, 0, 0);
-  const old = f.SelectObject(dc, bmp);
-  const px = new Uint8Array(koffi.view(out[0], width * height * 4));
-  px.fill(0);
-  f.SetBkMode(dc, 1);
-  f.SetTextColor(dc, 0xffffff);
-  f.TextOutW(dc, 1, 1, text, text.length);
-  const mask = new Uint8Array(width * height);
-  for (let i = 0; i < mask.length; i++) mask[i] = Math.max(px[i * 4], px[i * 4 + 1], px[i * 4 + 2]);
-  f.SelectObject(dc, old); f.DeleteObject(bmp);
-  f.SelectObject(dc, oldFont); f.DeleteObject(font);
-  f.DeleteDC(dc); f.ReleaseDC(0, screen);
-  return { width, height, mask };
-}
+import platform from '../platform/index.js';
 
 const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
 const mix = (a, b, t) => a + (b - a) * t;
@@ -421,12 +301,12 @@ export class ScanAnimation {
     let ended = false;
     stopped.then(() => { ended = true; });
     try {
-      ensurePump();
-      const v = w.virtualScreen();
+      platform.ensurePump();
+      const v = platform.virtualScreen();
       const pad = 330;
       const left = Math.max(v.x, Math.floor(Math.min(bounds.left, start.x) - pad)), top = Math.max(v.y, Math.floor(Math.min(bounds.top, start.y) - pad));
       const right = Math.min(v.x + v.width, Math.ceil(Math.max(bounds.right, start.x) + pad)), bottom = Math.min(v.y + v.height, Math.ceil(Math.max(bounds.bottom, start.y) + pad));
-      layer = new Layer(Math.max(40, right - left), Math.max(40, bottom - top));
+      layer = new platform.Layer(Math.max(40, right - left), Math.max(40, bottom - top));
       const rgb = RIPPLE_COLORS[button] ?? RIPPLE_COLORS.left;
       const pts = [{ x: start.x, y: start.y, t: 0 }];
       const t0 = performance.now();
@@ -434,10 +314,10 @@ export class ScanAnimation {
       for (;;) {
         const tf = performance.now(), t = tf - t0;
         if (cancelled()) break;
-        if (ended && !endAt) { endAt = t; const c = w.cursorPos(); endPoint = { x: c.x, y: c.y }; pts.push({ ...endPoint, t }); }
+        if (ended && !endAt) { endAt = t; const c = platform.cursorPos(); endPoint = { x: c.x, y: c.y }; pts.push({ ...endPoint, t }); }
         if (endAt && t - endAt > TRAIL_FADE_MS) break;
         if (!endAt) {
-          const c = w.cursorPos();
+          const c = platform.cursorPos();
           const last = pts[pts.length - 1];
           if (Math.hypot(c.x - last.x, c.y - last.y) >= 1) pts.push({ x: c.x, y: c.y, t });
         }
@@ -461,7 +341,7 @@ export class ScanAnimation {
       layer = null;
       if (endPoint && ring && !cancelled()) await this.ripple(endPoint, button, 1, cancelled);
     } catch (e) {
-      process.stderr.write(`win-input-mcp: drag effect failed (${e.message})
+      process.stderr.write(`ispyx: drag effect failed (${e.message})
 `);
     } finally {
       layer?.destroy();
@@ -478,9 +358,9 @@ export class ScanAnimation {
     let ended = false;
     stopped.then(() => { ended = true; });
     try {
-      ensurePump();
+      platform.ensurePump();
       const S = 180, c = S / 2;
-      layer = new Layer(S, S);
+      layer = new platform.Layer(S, S);
       const SP = 24, L = SP * 3, arm = 13;
       const t0 = performance.now();
       let endAt = 0;
@@ -518,7 +398,7 @@ export class ScanAnimation {
         await new Promise((r) => setTimeout(r, Math.max(1, 16 - (performance.now() - tf))));
       }
     } catch (e) {
-      process.stderr.write(`win-input-mcp: scroll effect failed (${e.message})
+      process.stderr.write(`ispyx: scroll effect failed (${e.message})
 `);
     } finally {
       layer?.destroy();
@@ -533,15 +413,15 @@ export class ScanAnimation {
     if (!this.enabled || !chords.length) return;
     let layer = null;
     try {
-      ensurePump();
+      platform.ensurePump();
       const pad = 16, capH = 46, gapPlus = 26, gapChord = 38;
-      const items = chords.map((chord) => chord.map((label) => ({ label, t: textMask(label, 22, 600) })));
-      const plus = textMask('+', 22, 600);
+      const items = chords.map((chord) => chord.map((label) => ({ label, t: platform.textMask(label, 22, 600) })));
+      const plus = platform.textMask('+', 22, 600);
       const capW = (it) => Math.max(capH, it.t.width + 30);
       const widths = items.map((chord) => chord.reduce((sum, it) => sum + capW(it), 0) + gapPlus * (chord.length - 1));
       const total = widths.reduce((a, b) => a + b, 0) + gapChord * (items.length - 1);
       const W = Math.min(Math.round(total + pad * 2), Math.max(200, area.width - 20)), H = capH + pad * 2;
-      layer = new Layer(W, H);
+      layer = new platform.Layer(W, H);
       const px = layer.px;
       const put = (x, y, r, g, b, a) => { // premultiplied "over"
         if (a <= 0 || x < 0 || y < 0 || x >= W || y >= H) return;
@@ -583,7 +463,7 @@ export class ScanAnimation {
         await new Promise((r) => setTimeout(r, Math.max(1, 16 - (performance.now() - tf))));
       }
     } catch (e) {
-      process.stderr.write(`win-input-mcp: key effect failed (${e.message})\n`);
+      process.stderr.write(`ispyx: key effect failed (${e.message})\n`);
     } finally {
       layer?.destroy();
     }
@@ -599,12 +479,12 @@ export class ScanAnimation {
     let ended = false;
     stopped.then(() => { ended = true; });
     try {
-      ensurePump();
+      platform.ensurePump();
       const W = 300, H = 64;
-      layer = new Layer(W, H);
+      layer = new platform.Layer(W, H);
       const px = layer.px;
       const glyphs = {};
-      for (const g of '0123456789/') glyphs[g] = textMask(g, 17, 600);
+      for (const g of '0123456789/') glyphs[g] = platform.textMask(g, 17, 600);
       const adv = Math.max(...'0123456789'.split('').map((g) => glyphs[g].width)) + 1;
       const put = (x, y, r, g, b, a) => {
         if (a <= 0 || x < 0 || y < 0 || x >= W || y >= H) return;
@@ -656,7 +536,7 @@ export class ScanAnimation {
         await new Promise((r) => setTimeout(r, 33));
       }
     } catch (e) {
-      process.stderr.write(`win-input-mcp: typing effect failed (${e.message})\n`);
+      process.stderr.write(`ispyx: typing effect failed (${e.message})\n`);
     } finally {
       layer?.destroy();
     }
@@ -688,11 +568,11 @@ export class ScanAnimation {
         .filter((q) => q.x1 - q.x0 >= 60 && q.y1 - q.y0 >= 40)
         .slice(0, 14);
       if (!list.length && !opts.origin) return;
-      ensurePump();
+      platform.ensurePump();
       const esize = Math.round(clamp(Math.min(W, H) * 0.11, 72, 124));
       const reach = opts.reach ?? Math.hypot(cx, cy) + 60; // the rings run past the farthest corner
-      frames = new Layer(W, H);
-      if (hasEye) eye = new Layer(esize, esize);
+      frames = new platform.Layer(W, H);
+      if (hasEye) eye = new platform.Layer(esize, esize);
       const OPEN = 300, PING = 1300, FADE = 450;
       const END = OPEN + PING;
       const front = (t) => (t < OPEN ? -1 : easeOut(clamp((t - OPEN) / PING)) * reach); // ring radius, -1 = not yet
@@ -723,7 +603,7 @@ export class ScanAnimation {
         await new Promise((r) => setTimeout(r, Math.max(1, 16 - (performance.now() - tf))));
       }
     } catch (e) {
-      process.stderr.write(`win-input-mcp: window scan effect failed (${e.message})\n`);
+      process.stderr.write(`ispyx: window scan effect failed (${e.message})\n`);
     } finally {
       eye?.destroy();
       frames?.destroy();
@@ -749,12 +629,12 @@ export class ScanAnimation {
     if (!this.enabled || ms < 1) return;
     let layer = null;
     try {
-      ensurePump();
+      platform.ensurePump();
       const W = 220, H = 64;
-      layer = new Layer(W, H);
+      layer = new platform.Layer(W, H);
       const px = layer.px;
       const glyphs = {};
-      for (const g of '0123456789.s') glyphs[g] = textMask(g, 17, 600);
+      for (const g of '0123456789.s') glyphs[g] = platform.textMask(g, 17, 600);
       const adv = Math.max(...'0123456789'.split('').map((g) => glyphs[g].width)) + 1;
       const put = (x, y, r, g, b, a) => {
         if (a <= 0 || x < 0 || y < 0 || x >= W || y >= H) return;
@@ -817,7 +697,7 @@ export class ScanAnimation {
         await new Promise((r) => setTimeout(r, Math.max(1, 33 - (performance.now() - tf))));
       }
     } catch (e) {
-      process.stderr.write(`win-input-mcp: wait effect failed (${e.message})\n`);
+      process.stderr.write(`ispyx: wait effect failed (${e.message})\n`);
     } finally {
       layer?.destroy();
     }
@@ -828,8 +708,8 @@ export class ScanAnimation {
     if (!this.enabled) return;
     let layer = null;
     try {
-      ensurePump();
-      layer = new Layer(RIPPLE_SIZE, RIPPLE_SIZE);
+      platform.ensurePump();
+      layer = new platform.Layer(RIPPLE_SIZE, RIPPLE_SIZE);
       const rgb = RIPPLE_COLORS[button] ?? RIPPLE_COLORS.left;
       const total = RIPPLE_MS + (rings - 1) * RIPPLE_GAP_MS;
       const t0 = performance.now();
@@ -841,7 +721,7 @@ export class ScanAnimation {
         await new Promise((r) => setTimeout(r, Math.max(1, 16 - (performance.now() - tf))));
       }
     } catch (e) {
-      process.stderr.write(`win-input-mcp: click effect failed (${e.message})
+      process.stderr.write(`ispyx: click effect failed (${e.message})
 `);
     } finally {
       layer?.destroy();
@@ -853,12 +733,12 @@ export class ScanAnimation {
     if (!this.enabled) return;
     let layer = null;
     try {
-      const v = w.virtualScreen();
+      const v = platform.virtualScreen();
       const left = Math.max(rect.left, v.x), top = Math.max(rect.top, v.y);
       const right = Math.min(rect.left + rect.width, v.x + v.width), bottom = Math.min(rect.top + rect.height, v.y + v.height);
       if (right - left < 20 || bottom - top < 20) return;
-      ensurePump();
-      layer = new Layer(right - left, bottom - top);
+      platform.ensurePump();
+      layer = new platform.Layer(right - left, bottom - top);
       renderFrame(layer.px, layer.width, layer.height);
       const t0 = performance.now();
       for (;;) {
@@ -870,7 +750,7 @@ export class ScanAnimation {
         await new Promise((r) => setTimeout(r, Math.max(1, 16 - (performance.now() - tf))));
       }
     } catch (e) {
-      process.stderr.write(`win-input-mcp: focus effect failed (${e.message})
+      process.stderr.write(`ispyx: focus effect failed (${e.message})
 `);
     } finally {
       layer?.destroy();
@@ -885,14 +765,14 @@ export class ScanAnimation {
     if (!this.enabled) return;
     let wedge = null, band = null, eye = null;
     try {
-      ensurePump();
+      platform.ensurePump();
       const size = Math.round(clamp(Math.min(rect.width, rect.height) * 0.3, 56, 150));
       const bandH = 56;
       // the eye floats beside the region (alternating sides; the side with more room if only one fits) and looks at it
       // (room is measured on the monitor holding the region's centre; with no room, as for a full-screen scan,
       // the eye sits inside the region, inset from its left or right edge)
       const cxr = rect.left + rect.width / 2, cyr = rect.top + rect.height / 2;
-      const mon = w.listMonitors().find((m) => cxr >= m.left && cxr < m.left + m.width && cyr >= m.top && cyr < m.top + m.height) ?? w.virtualScreen();
+      const mon = platform.listMonitors().find((m) => cxr >= m.left && cxr < m.left + m.width && cyr >= m.top && cyr < m.top + m.height) ?? platform.virtualScreen();
       const m = { x: mon.left ?? mon.x, y: mon.top ?? mon.y, width: mon.width, height: mon.height };
       const gap = 18;
       const roomL = rect.left - m.x, roomR = m.x + m.width - (rect.left + rect.width);
@@ -906,10 +786,10 @@ export class ScanAnimation {
       const pad = 4;
       const lx = Math.floor(Math.min(ex, rect.left) - pad), rx = Math.ceil(Math.max(ex + size, rect.left + rect.width) + pad);
       const ty = Math.floor(Math.min(ey, rect.top) - pad), by = Math.ceil(Math.max(ey + size, rect.top + rect.height) + pad);
-      wedge = new Layer(rx - lx, by - ty);
-      band = new Layer(Math.max(40, rect.width), bandH);
+      wedge = new platform.Layer(rx - lx, by - ty);
+      band = new platform.Layer(Math.max(40, rect.width), bandH);
       renderBand(band.px, band.width, bandH);
-      eye = new Layer(size, size);
+      eye = new platform.Layer(size, size);
       const midY = rect.top + rect.height / 2;
       const t0 = performance.now();
       for (;;) {
@@ -938,7 +818,7 @@ export class ScanAnimation {
         await new Promise((r) => setTimeout(r, Math.max(1, 16 - (performance.now() - tf))));
       }
     } catch (e) {
-      process.stderr.write(`win-input-mcp: scan animation failed (${e.message})\n`);
+      process.stderr.write(`ispyx: scan animation failed (${e.message})\n`);
     } finally {
       wedge?.destroy();
       band?.destroy();
