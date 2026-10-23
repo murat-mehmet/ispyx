@@ -652,8 +652,8 @@ export class ScanAnimation {
         .slice(0, 14);
       if (!list.length) return;
       ensurePump();
-      const R = Math.round(Math.min(W, H) * 0.4), D = R * 2 + 4;
-      const esize = Math.round(clamp(Math.min(W, H) * 0.13, 80, 150));
+      const R = Math.round(Math.min(W, H) * 0.27), D = R * 2 + 4;
+      const esize = Math.round(clamp(Math.min(W, H) * 0.11, 72, 124));
       // radar dish: static rings and ticks (base), and the pixels the turning beam can touch
       const base = new Uint8Array(D * D * 4);
       const pix = [];
@@ -690,13 +690,15 @@ export class ScanAnimation {
         const fadeIn = ease(clamp(t / OPEN));
         // dish: base plus the beam with its fading trail
         dish.px.set(base);
-        if (t >= OPEN * 0.6) {
+        // the beam fades in as it starts turning and fades out as the turn ends
+        const env = smooth(clamp(turn / 0.14)) * smooth(clamp((1 - turn) / 0.2));
+        if (t >= OPEN * 0.6 && env > 0.01) {
           const px = dish.px, TWO = Math.PI * 2;
           for (let k = 0; k < count; k++) {
             let d = (beam - ang[k]) % TWO;
             if (d < 0) d += TWO;
             if (d > 1.5) continue;
-            const al = Math.max(d < 0.04 ? 1 : 0, 0.62 * Math.exp(-d / 0.42)) * (turn >= 1 ? fadeOut : 1);
+            const al = Math.max(d < 0.04 ? 1 : 0, 0.62 * Math.exp(-d / 0.42)) * env;
             const i = idx[k];
             if (al * 255 <= px[i + 3]) continue;
             const hot = d < 0.04 ? 1 : 0;
