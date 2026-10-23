@@ -320,6 +320,41 @@ function drawBorder(px, W, H, x0, y0, x1, y1, rgb, a, thick) {
   ring(2, thick, rgb, a);
 }
 
+const easeOut = (t) => 1 - (1 - t) ** 1.5;
+
+/**
+ * A sonar ring of radius `r` around (cx, cy): bright thin front with a dark outer edge (so it shows on white) and a
+ * glow trailing `trail` px inward. Only the annulus is visited. `k` scales the strength (0..1).
+ */
+function drawRing(px, W, H, cx, cy, r, trail, k) {
+  if (k <= 0.01) return;
+  const rout = r + 3.5, rin = Math.max(0, r - trail);
+  const y0 = Math.max(0, Math.floor(cy - rout)), y1 = Math.min(H - 1, Math.ceil(cy + rout));
+  for (let y = y0; y <= y1; y++) {
+    const dy = y + 0.5 - cy;
+    if (Math.abs(dy) > rout) continue;
+    const xo = Math.sqrt(rout * rout - dy * dy);
+    const xi = Math.abs(dy) < rin ? Math.sqrt(rin * rin - dy * dy) : 0;
+    for (const [xa, xb] of [[cx + xi, cx + xo], [cx - xo, cx - xi]]) {
+      for (let x = Math.max(0, Math.floor(xa)); x <= Math.min(W - 1, Math.ceil(xb)); x++) {
+        const d = r - Math.hypot(x + 0.5 - cx, dy); // > 0 behind the front
+        let al, red, grn, blu;
+        if (d < -3.2) continue;
+        if (d < 0) { al = 0.7 * clamp(1.6 - Math.abs(d + 1.7)) * k; red = 14; grn = 50; blu = 28; } // dark outer edge
+        else {
+          const core = clamp(2.2 - d);
+          al = Math.max(core, 0.5 * Math.exp(-d / 20)) * k;
+          red = mix(60, 255, core); grn = 255; blu = mix(110, 255, core);
+        }
+        if (al <= 0.01) continue;
+        const i = (y * W + x) * 4;
+        if (al * 255 <= px[i + 3]) continue;
+        px[i] = blu * al; px[i + 1] = grn * al; px[i + 2] = red * al; px[i + 3] = al * 255;
+      }
+    }
+  }
+}
+
 const KEY_LABELS = { ctrl: 'Ctrl', control: 'Ctrl', shift: 'Shift', alt: 'Alt', win: 'Win', windows: 'Win', meta: 'Win', cmd: 'Win', super: 'Win', enter: 'Enter', return: 'Enter', esc: 'Esc', escape: 'Esc', tab: 'Tab', space: 'Space', backspace: 'Backspace', delete: 'Del', del: 'Del', insert: 'Ins', ins: 'Ins', home: 'Home', end: 'End', pageup: 'PgUp', pgup: 'PgUp', pagedown: 'PgDn', pgdn: 'PgDn', left: '\u2190', up: '\u2191', right: '\u2192', down: '\u2193' };
 /** "ctrl+a ctrl+c" -> [['Ctrl', 'A'], ['Ctrl', 'C']] */
 export const keyLabels = (keys) => keys.trim().split(/\s+/).filter(Boolean).map((chord) => chord.split('+').filter(Boolean).map((k) => KEY_LABELS[k.toLowerCase()] ?? (k.length === 1 ? k.toUpperCase() : k[0].toUpperCase() + k.slice(1))));
@@ -628,14 +663,15 @@ export class ScanAnimation {
   }
 
   /**
-   * list_windows: an eye opens in the middle of the monitor and a radar beam turns around it once, the eye
-   * following the beam. A window's frame lights up when the beam passes its direction, so the windows light one
-   * after another around the circle, then everything fades. Green = usable, red = on the denylist, amber =
-   * elevated (cannot be controlled). `wins`: [{ rect, allowed, elevated }] in desktop pixels.
+   * list_windows: an eye opens in the middle of the monitor and sends out two sonar pings. Each ping is a ring
+   * that expands to the corners; a window's frame lights when the first ring reaches its nearest edge (so the
+   * windows light nearest first) and flashes again when the echo ring passes. Then everything fades. Green =
+   * usable, red = on the denylist, amber = elevated (cannot be controlled).
+   * `wins`: [{ rect, allowed, elevated }] in desktop pixels.
    */
   async radar(wins, area, cancelled = () => false) {
     if (!this.enabled) return;
-    let frames = null, dish = null, eye = null;
+    let frames = null, eye = null;
     try {
       const W = area.width, H = area.height;
       const cx = W / 2, cy = H / 2;
@@ -644,88 +680,49 @@ export class ScanAnimation {
           const l = Math.max(area.left, x.rect.left), t = Math.max(area.top, x.rect.top);
           const r = Math.min(area.left + W, x.rect.left + x.rect.width), bt = Math.min(area.top + H, x.rect.top + x.rect.height);
           const q = { x0: l - area.left, y0: t - area.top, x1: r - area.left - 1, y1: bt - area.top - 1, rgb: x.allowed === false ? [255, 80, 80] : x.elevated ? [255, 190, 40] : [60, 255, 110] };
-          const ang = Math.atan2((q.y0 + q.y1) / 2 - cy, (q.x0 + q.x1) / 2 - cx); // direction of the window from the eye
-          q.f = (((ang + Math.PI / 2) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) / (2 * Math.PI); // 0..1 turn at which the beam gets there
+          q.dist = Math.hypot(Math.max(q.x0 - cx, 0, cx - q.x1), Math.max(q.y0 - cy, 0, cy - q.y1)); // eye to the nearest edge
           return q;
         })
         .filter((q) => q.x1 - q.x0 >= 60 && q.y1 - q.y0 >= 40)
         .slice(0, 14);
       if (!list.length) return;
       ensurePump();
-      const R = Math.round(Math.min(W, H) * 0.27), D = R * 2 + 4;
       const esize = Math.round(clamp(Math.min(W, H) * 0.11, 72, 124));
-      // radar dish: static rings and ticks (base), and the pixels the turning beam can touch
-      const base = new Uint8Array(D * D * 4);
-      const pix = [];
-      const angs = [];
-      for (let y = 0; y < D; y++) {
-        for (let x = 0; x < D; x++) {
-          const dx = x + 0.5 - D / 2, dy = y + 0.5 - D / 2, r = Math.hypot(dx, dy);
-          if (r > R || r < esize * 0.45) continue;
-          pix.push((y * D + x) * 4);
-          angs.push(Math.atan2(dy, dx));
-          const ringD = Math.min(...[0.34, 0.67, 1].map((k) => Math.abs(r - R * k)));
-          let al = clamp(1.2 - ringD) * 0.55;
-          if (Math.abs(dx) < 0.8 || Math.abs(dy) < 0.8) al = Math.max(al, 0.22); // cross hair
-          if (r > R - 2.5) al = Math.max(al, 0.9);
-          if (al > 0) {
-            const i = (y * D + x) * 4;
-            base[i] = 110 * al; base[i + 1] = 255 * al; base[i + 2] = 60 * al; base[i + 3] = al * 255;
-          }
-        }
-      }
-      const count = pix.length;
-      const idx = Uint32Array.from(pix), ang = Float32Array.from(angs);
+      const reach = Math.hypot(cx, cy) + 60; // the rings run past the farthest corner
       frames = new Layer(W, H);
-      dish = new Layer(D, D);
       eye = new Layer(esize, esize);
-      const OPEN = 300, TURN = 1500, FADE = 420;
+      const OPEN = 300, PING = 1150, ECHO = 560, FADE = 420;
+      const END = OPEN + ECHO + PING;
+      const front = (t, start) => (t < start ? -1 : easeOut(clamp((t - start) / PING)) * reach); // ring radius, -1 = not yet
       const t0 = performance.now();
       for (;;) {
         const t = performance.now() - t0;
-        if (t >= OPEN + TURN + FADE || cancelled()) break;
-        const turn = clamp((t - OPEN) / TURN); // 0..1 of the one full turn
-        const beam = -Math.PI / 2 + turn * 2 * Math.PI;
-        const fadeOut = t > OPEN + TURN ? 1 - clamp((t - OPEN - TURN) / FADE) : 1;
-        const fadeIn = ease(clamp(t / OPEN));
-        // dish: base plus the beam with its fading trail
-        dish.px.set(base);
-        // the beam fades in as it starts turning and fades out as the turn ends
-        const env = smooth(clamp(turn / 0.14)) * smooth(clamp((1 - turn) / 0.2));
-        if (t >= OPEN * 0.6 && env > 0.01) {
-          const px = dish.px, TWO = Math.PI * 2;
-          for (let k = 0; k < count; k++) {
-            let d = (beam - ang[k]) % TWO;
-            if (d < 0) d += TWO;
-            if (d > 1.5) continue;
-            const al = Math.max(d < 0.04 ? 1 : 0, 0.62 * Math.exp(-d / 0.42)) * env;
-            const i = idx[k];
-            if (al * 255 <= px[i + 3]) continue;
-            const hot = d < 0.04 ? 1 : 0;
-            px[i] = mix(60, 255, hot) * al; px[i + 1] = 255 * al; px[i + 2] = mix(110, 255, hot) * al; px[i + 3] = al * 255;
-          }
-        }
-        dish.present(area.left + cx - D / 2, area.top + cy - D / 2, 255 * fadeIn * (t > OPEN + TURN ? fadeOut : 1));
-        // windows light up as the beam passes them
+        if (t >= END + FADE || cancelled()) break;
+        const out = t > END ? 1 - ease(clamp((t - END) / FADE)) : 1;
+        const r1 = front(t, OPEN), r2 = front(t, OPEN + ECHO);
         frames.px.fill(0);
+        for (const [r, strength] of [[r1, 1], [r2, 0.75]]) {
+          if (r > 2 && r < reach) drawRing(frames.px, W, H, cx, cy, r, 70, strength * out * (1 - 0.55 * (r / reach)));
+        }
         for (const q of list) {
-          if (turn < q.f) continue;
-          const since = (turn - q.f) * TURN;
-          const a = t > OPEN + TURN ? fadeOut : 1 - 0.3 * clamp(since / 500);
-          drawBorder(frames.px, W, H, q.x0, q.y0, q.x1, q.y1, q.rgb, a, since < 150 ? 5 : 3);
+          if (r1 < q.dist) continue; // the first ring has not got there
+          const since1 = (r1 - q.dist) / reach * PING; // roughly how long ago the first ring passed
+          const echo = r2 >= q.dist ? (r2 - q.dist) / reach * PING : -1;
+          const flash = (since1 < 160) || (echo >= 0 && echo < 160);
+          const a = out * (echo >= 0 ? 1 : 0.78);
+          drawBorder(frames.px, W, H, q.x0, q.y0, q.x1, q.y1, q.rgb, a, flash ? 5 : 3);
         }
         frames.present(area.left, area.top, 255);
-        // the eye follows the beam
-        const open = t < OPEN ? ease(t / OPEN) : t > OPEN + TURN ? 1 - ease(clamp((t - OPEN - TURN) / FADE)) : 1;
-        renderEye(eye.px, esize, open, Math.cos(beam) * 0.9, Math.sin(beam) * 0.9, t >= OPEN ? 1 : 0);
-        eye.present(area.left + cx - esize / 2, area.top + cy - esize / 2, 255 * Math.min(fadeIn, fadeOut));
+        const open = t < OPEN ? ease(t / OPEN) : t > END ? 1 - ease(clamp((t - END) / FADE)) : 1;
+        const pulse = Math.max(0, 1 - Math.abs(t - OPEN - 80) / 260, 1 - Math.abs(t - OPEN - ECHO - 80) / 260); // the pupil flares at each ping
+        renderEye(eye.px, esize, open, 0, 0.15, pulse);
+        eye.present(area.left + cx - esize / 2, area.top + cy - esize / 2, 255 * Math.min(ease(clamp(t / OPEN)), out));
         await new Promise((r) => setTimeout(r, 24));
       }
     } catch (e) {
       process.stderr.write(`win-input-mcp: window scan effect failed (${e.message})\n`);
     } finally {
       eye?.destroy();
-      dish?.destroy();
       frames?.destroy();
     }
   }
