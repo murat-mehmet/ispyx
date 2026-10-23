@@ -198,4 +198,4 @@ Every pointer glide (the approach of `click`, `scroll`, `mouse_down`, `mouse_up`
 
 `type_text` (6 characters or more) shows a small pill near the bottom of the monitor the keys go to: keyboard icon, progress bar and "37 / 120". It never shows the typed text. Like `click`, it holds up only screenshots.
 
-`list_windows` sweeps a scan line over the monitor the keys go to; each window's frame lights up as the line reaches it (green usable, red denylisted, amber elevated), then fades. At most once every 8 s; like `click`, it holds up only screenshots.
+`list_windows` opens an eye in the middle of the monitor the keys go to; a radar beam turns once around it (the eye follows it) and each window's frame lights up as the beam passes its direction (green usable, red denylisted, amber elevated), then everything fades. About 2.2 s, at most once every 8 s; like `click`, it holds up only screenshots.

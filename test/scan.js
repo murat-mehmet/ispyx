@@ -172,12 +172,12 @@ try {
     const mon = w.listMonitors().find((m) => m.primary);
     const wins = w.listWindows().filter((q) => !q.minimized).map((q) => ({ rect: q.rect, allowed: true, elevated: q.elevated }));
     const run = anim.radar(wins, { left: mon.left, top: mon.top, width: mon.width, height: mon.height });
-    await sleep(750);
+    await sleep(1150);
     const cap = w.captureScreenRect({ left: mon.left, top: mon.top, width: mon.width, height: mon.height });
     let lit = 0;
     for (let i = 0; i < cap.bits.length; i += 4) { const b = cap.bits[i], g = cap.bits[i + 1], r = cap.bits[i + 2]; if (g > 200 && g - r > 90 && g - b > 60) lit++; }
     fs.writeFileSync('test/out/radar.png', shrinkToPng(cap, 1100).png);
-    check('radar draws window frames and the sweep line', !!scanWindows() && lit > 1500, `${lit} green pixels, ${wins.length} windows`);
+    check('radar draws the dish, the eye and window frames', !!scanWindows() && lit > 1500, `${lit} green pixels, ${wins.length} windows`);
     await run;
     check('radar is gone afterwards', !scanWindows());
   }

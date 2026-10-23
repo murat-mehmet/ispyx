@@ -628,54 +628,102 @@ export class ScanAnimation {
   }
 
   /**
-   * list_windows: a scan line sweeps the monitor top to bottom; each window's frame lights when the line reaches
-   * its top edge, stays lit until the line has passed its bottom edge, then fades. Green = usable, red = on the
-   * denylist, amber = elevated (cannot be controlled). `wins`: [{ rect, allowed, elevated }] in desktop pixels.
+   * list_windows: an eye opens in the middle of the monitor and a radar beam turns around it once, the eye
+   * following the beam. A window's frame lights up when the beam passes its direction, so the windows light one
+   * after another around the circle, then everything fades. Green = usable, red = on the denylist, amber =
+   * elevated (cannot be controlled). `wins`: [{ rect, allowed, elevated }] in desktop pixels.
    */
   async radar(wins, area, cancelled = () => false) {
     if (!this.enabled) return;
-    let frames = null, band = null;
+    let frames = null, dish = null, eye = null;
     try {
       const W = area.width, H = area.height;
+      const cx = W / 2, cy = H / 2;
       const list = wins
         .map((x) => {
           const l = Math.max(area.left, x.rect.left), t = Math.max(area.top, x.rect.top);
-          const r = Math.min(area.left + W, x.rect.left + x.rect.width), b = Math.min(area.top + H, x.rect.top + x.rect.height);
-          return { x0: l - area.left, y0: t - area.top, x1: r - area.left - 1, y1: b - area.top - 1, rgb: x.allowed === false ? [255, 80, 80] : x.elevated ? [255, 190, 40] : [60, 255, 110] };
+          const r = Math.min(area.left + W, x.rect.left + x.rect.width), bt = Math.min(area.top + H, x.rect.top + x.rect.height);
+          const q = { x0: l - area.left, y0: t - area.top, x1: r - area.left - 1, y1: bt - area.top - 1, rgb: x.allowed === false ? [255, 80, 80] : x.elevated ? [255, 190, 40] : [60, 255, 110] };
+          const ang = Math.atan2((q.y0 + q.y1) / 2 - cy, (q.x0 + q.x1) / 2 - cx); // direction of the window from the eye
+          q.f = (((ang + Math.PI / 2) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) / (2 * Math.PI); // 0..1 turn at which the beam gets there
+          return q;
         })
         .filter((q) => q.x1 - q.x0 >= 60 && q.y1 - q.y0 >= 40)
         .slice(0, 14);
       if (!list.length) return;
       ensurePump();
+      const R = Math.round(Math.min(W, H) * 0.4), D = R * 2 + 4;
+      const esize = Math.round(clamp(Math.min(W, H) * 0.13, 80, 150));
+      // radar dish: static rings and ticks (base), and the pixels the turning beam can touch
+      const base = new Uint8Array(D * D * 4);
+      const pix = [];
+      const angs = [];
+      for (let y = 0; y < D; y++) {
+        for (let x = 0; x < D; x++) {
+          const dx = x + 0.5 - D / 2, dy = y + 0.5 - D / 2, r = Math.hypot(dx, dy);
+          if (r > R || r < esize * 0.45) continue;
+          pix.push((y * D + x) * 4);
+          angs.push(Math.atan2(dy, dx));
+          const ringD = Math.min(...[0.34, 0.67, 1].map((k) => Math.abs(r - R * k)));
+          let al = clamp(1.2 - ringD) * 0.55;
+          if (Math.abs(dx) < 0.8 || Math.abs(dy) < 0.8) al = Math.max(al, 0.22); // cross hair
+          if (r > R - 2.5) al = Math.max(al, 0.9);
+          if (al > 0) {
+            const i = (y * D + x) * 4;
+            base[i] = 110 * al; base[i + 1] = 255 * al; base[i + 2] = 60 * al; base[i + 3] = al * 255;
+          }
+        }
+      }
+      const count = pix.length;
+      const idx = Uint32Array.from(pix), ang = Float32Array.from(angs);
       frames = new Layer(W, H);
-      band = new Layer(W, 56);
-      renderBand(band.px, W, 56);
-      const SWEEP = 1100, FADE = 380, bandH = 56;
+      dish = new Layer(D, D);
+      eye = new Layer(esize, esize);
+      const OPEN = 300, TURN = 1500, FADE = 420;
       const t0 = performance.now();
       for (;;) {
         const t = performance.now() - t0;
-        if (t >= SWEEP + FADE || cancelled()) break;
-        const p = clamp(t / SWEEP);
-        const edge = p * H; // the line's leading edge (bottom of the band)
+        if (t >= OPEN + TURN + FADE || cancelled()) break;
+        const turn = clamp((t - OPEN) / TURN); // 0..1 of the one full turn
+        const beam = -Math.PI / 2 + turn * 2 * Math.PI;
+        const fadeOut = t > OPEN + TURN ? 1 - clamp((t - OPEN - TURN) / FADE) : 1;
+        const fadeIn = ease(clamp(t / OPEN));
+        // dish: base plus the beam with its fading trail
+        dish.px.set(base);
+        if (t >= OPEN * 0.6) {
+          const px = dish.px, TWO = Math.PI * 2;
+          for (let k = 0; k < count; k++) {
+            let d = (beam - ang[k]) % TWO;
+            if (d < 0) d += TWO;
+            if (d > 1.5) continue;
+            const al = Math.max(d < 0.04 ? 1 : 0, 0.62 * Math.exp(-d / 0.42)) * (turn >= 1 ? fadeOut : 1);
+            const i = idx[k];
+            if (al * 255 <= px[i + 3]) continue;
+            const hot = d < 0.04 ? 1 : 0;
+            px[i] = mix(60, 255, hot) * al; px[i + 1] = 255 * al; px[i + 2] = mix(110, 255, hot) * al; px[i + 3] = al * 255;
+          }
+        }
+        dish.present(area.left + cx - D / 2, area.top + cy - D / 2, 255 * fadeIn * (t > OPEN + TURN ? fadeOut : 1));
+        // windows light up as the beam passes them
         frames.px.fill(0);
         for (const q of list) {
-          if (edge < q.y0) continue; // not reached yet
-          const passed = edge > q.y1;
-          const tPassed = passed ? SWEEP * ((q.y1 + 1) / H) : 0; // when the line left the window
-          const a = t >= SWEEP ? 1 - clamp((t - SWEEP) / FADE) : passed ? 1 - 0.45 * clamp((t - tPassed) / 300) : 1;
-          const hitAge = t - SWEEP * (q.y0 / H); // just after the line touches the window: thicker flash
-          const thick = hitAge < 140 ? 5 : 3;
-          drawBorder(frames.px, W, H, q.x0, q.y0, q.x1, q.y1, q.rgb, a, thick);
+          if (turn < q.f) continue;
+          const since = (turn - q.f) * TURN;
+          const a = t > OPEN + TURN ? fadeOut : 1 - 0.3 * clamp(since / 500);
+          drawBorder(frames.px, W, H, q.x0, q.y0, q.x1, q.y1, q.rgb, a, since < 150 ? 5 : 3);
         }
         frames.present(area.left, area.top, 255);
-        if (t < SWEEP) band.present(area.left, area.top + edge - bandH, 255 * Math.min(1, p * 12, (1 - p) * 12));
-        else if (band.shown) band.present(area.left, area.top, 0, 1);
+        // the eye follows the beam
+        const open = t < OPEN ? ease(t / OPEN) : t > OPEN + TURN ? 1 - ease(clamp((t - OPEN - TURN) / FADE)) : 1;
+        renderEye(eye.px, esize, open, Math.cos(beam) * 0.9, Math.sin(beam) * 0.9, t >= OPEN ? 1 : 0);
+        eye.present(area.left + cx - esize / 2, area.top + cy - esize / 2, 255 * Math.min(fadeIn, fadeOut));
         await new Promise((r) => setTimeout(r, 24));
       }
     } catch (e) {
       process.stderr.write(`win-input-mcp: window scan effect failed (${e.message})\n`);
     } finally {
-      band?.destroy();
+      eye?.destroy();
+      dish?.destroy();
       frames?.destroy();
     }
   }
