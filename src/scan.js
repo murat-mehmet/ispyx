@@ -741,6 +741,88 @@ export class ScanAnimation {
     return Promise.all(areas.map((a) => this.radar(wins, a, cancelled, opts)));
   }
 
+  /**
+   * wait: a small pill near the bottom of the screen with an hourglass, the time left ("4.2 s") and a bar that
+   * runs down. Lasts `ms`, then fades. Never throws.
+   */
+  async countdown(ms, area, cancelled = () => false) {
+    if (!this.enabled || ms < 1) return;
+    let layer = null;
+    try {
+      ensurePump();
+      const W = 220, H = 64;
+      layer = new Layer(W, H);
+      const px = layer.px;
+      const glyphs = {};
+      for (const g of '0123456789.s') glyphs[g] = textMask(g, 17, 600);
+      const adv = Math.max(...'0123456789'.split('').map((g) => glyphs[g].width)) + 1;
+      const put = (x, y, r, g, b, a) => {
+        if (a <= 0 || x < 0 || y < 0 || x >= W || y >= H) return;
+        const i = (y * W + x) * 4, k = 1 - a;
+        px[i] = b * a + px[i] * k; px[i + 1] = g * a + px[i + 1] * k; px[i + 2] = r * a + px[i + 2] * k; px[i + 3] = a * 255 + px[i + 3] * k;
+      };
+      const roundRect = (x0, y0, w0, h0, rad, fill, alpha, border) => {
+        for (let y = 0; y < h0; y++) for (let x = 0; x < w0; x++) {
+          const dx = Math.min(x, w0 - 1 - x), dy = Math.min(y, h0 - 1 - y);
+          const dist = Math.hypot(Math.max(0, rad - dx), Math.max(0, rad - dy)) - rad;
+          const inside = clamp(0.5 - dist);
+          if (fill) put(x0 + x, y0 + y, fill[0], fill[1], fill[2], inside * alpha);
+          if (border) put(x0 + x, y0 + y, border[0], border[1], border[2], clamp(0.5 - (Math.abs(dist + 1.2) - 1.2)) * inside);
+        }
+      };
+      // hourglass: two triangles; the top one empties as the sand moves to the bottom one
+      const hourglass = (cx, cy, k) => {
+        const hw = 10, hh = 12;
+        for (let y = -hh; y <= hh; y++) {
+          const w0 = Math.abs(y) / hh * hw; // half width of the glass at this row
+          for (let x = -hw; x <= hw; x++) {
+            const edge = Math.abs(Math.abs(x) - w0);
+            const inside = Math.abs(x) <= w0;
+            if (edge < 1.1) put(cx + x, cy + y, 150, 255, 180, 1 - edge / 1.6);
+            else if (inside) {
+              const top = y < 0, depth = top ? -y / hh : y / hh; // 0 at the neck, 1 at the end
+              const filled = top ? depth > k * 0.9 : depth > 1 - k * 0.9; // top drains from the neck up, bottom fills from the end
+              if (filled) put(cx + x, cy + y, 60, 255, 110, 0.85);
+            }
+          }
+        }
+      };
+      const draw = (left, frac) => {
+        px.fill(0);
+        roundRect(0, 0, W, H, 14, [26, 30, 36], 0.94, [60, 255, 110]);
+        hourglass(30, 32, 1 - frac);
+        let x = 62;
+        const s = (left / 1000).toFixed(1);
+        for (const ch of s + ' s') {
+          if (ch === ' ') { x += 5; continue; }
+          const g = glyphs[ch]; if (!g) continue;
+          const dx = ch === '.' ? 0 : ch === 's' ? 0 : Math.round((adv - g.width) / 2);
+          for (let yy = 0; yy < g.height; yy++) for (let xx = 0; xx < g.width; xx++) put(x + dx + xx, 10 + yy, 245, 250, 247, g.mask[yy * g.width + xx] / 255);
+          x += ch === '.' || ch === 's' ? g.width + 1 : adv;
+        }
+        const bx = 62, bw = W - 62 - 18, by = 40;
+        roundRect(bx, by, bw, 8, 4, [58, 64, 72], 1, null);
+        const fw = Math.round(bw * clamp(frac));
+        if (fw >= 2) roundRect(bx, by, fw, 8, 4, [60, 255, 110], 1, null);
+      };
+      const left0 = Math.round(area.left + (area.width - W) / 2), top0 = Math.round(area.top + area.height - H - 90);
+      const t0 = performance.now(), FADE = 260;
+      for (;;) {
+        const tf = performance.now(), t = tf - t0;
+        if (t >= ms + FADE || cancelled()) break;
+        const remaining = Math.max(0, ms - t);
+        draw(remaining, remaining / ms);
+        const a = t > ms ? 1 - ease(clamp((t - ms) / FADE)) : ease(clamp(t / 160));
+        layer.present(left0, top0 + (1 - Math.min(1, t / 160)) * 14, 255 * a);
+        await new Promise((r) => setTimeout(r, Math.max(1, 33 - (performance.now() - tf))));
+      }
+    } catch (e) {
+      process.stderr.write(`win-input-mcp: wait effect failed (${e.message})\n`);
+    } finally {
+      layer?.destroy();
+    }
+  }
+
   /** click: expanding rings at the pressed point (colour by button, one ring per click). Never throws. */
   async ripple(point, button = 'left', rings = 1, cancelled = () => false) {
     if (!this.enabled) return;

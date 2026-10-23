@@ -118,6 +118,14 @@ function playRadar(list) {
   const run = scan.radarAll(wins, areas, home, () => guard.epoch !== epoch).finally(() => effects.delete(run));
   effects.add(run);
 }
+/** wait (1 s or longer): a pill with the time left. Ends with the wait; a cancelled call removes it. */
+function playCountdown(ms) {
+  const epoch = guard.epoch;
+  const area = keyboardArea();
+  if (!area) return;
+  const run = scan.countdown(ms, area, () => guard.epoch !== epoch).finally(() => effects.delete(run));
+  effects.add(run);
+}
 /** type_text: progress pill (never the text). Returns { progress, stop }. */
 function playTyping(total) {
   const epoch = guard.epoch;
@@ -674,6 +682,7 @@ server.registerTool('wait', {
   inputSchema: { ms: z.number().int().min(0).max(60000) },
 }, action('wait', async (args) => {
   let left = args.ms;
+  if (args.ms >= 1000) playCountdown(args.ms); // shorter waits are too frequent to be worth a cue
   while (left > 0) {
     const step = Math.min(left, 250);
     await w.sleep(step);

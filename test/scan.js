@@ -166,6 +166,20 @@ try {
     await run;
     check('typing pill is gone afterwards', !scanWindows());
   }
+  // wait countdown pill (drawn directly): shows green while counting down, is gone after the time and the fade
+  {
+    const anim = new ScanAnimation({ enabled: true });
+    const mon = w.listMonitors().find((m) => m.primary);
+    const run = anim.countdown(1500, { left: mon.left, top: mon.top, width: mon.width, height: mon.height });
+    await sleep(700);
+    const cap = w.captureScreenRect({ left: mon.left + Math.round(mon.width / 2) - 160, top: mon.top + mon.height - 190, width: 320, height: 100 });
+    let lit = 0;
+    for (let i = 0; i < cap.bits.length; i += 4) { const b = cap.bits[i], g = cap.bits[i + 1], r = cap.bits[i + 2]; if (g > 200 && g - r > 90 && g - b > 60) lit++; }
+    fs.writeFileSync('test/out/countdown-pill.png', shrinkToPng(cap, 320).png);
+    check('countdown pill is drawn with an hourglass and a bar', !!scanWindows() && lit > 150, `${lit} green pixels`);
+    await run;
+    check('countdown pill is gone afterwards', !scanWindows());
+  }
   // list_windows radar: the line sweeps the monitor and window frames light up (drawn directly, nothing is listed)
   {
     const anim = new ScanAnimation({ enabled: true });

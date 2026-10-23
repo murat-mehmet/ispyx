@@ -199,3 +199,5 @@ Every pointer glide (the approach of `click`, `scroll`, `mouse_down`, `mouse_up`
 `type_text` (6 characters or more) shows a small pill near the bottom of the monitor the keys go to: keyboard icon, progress bar and "37 / 120". It never shows the typed text. Like `click`, it holds up only screenshots.
 
 `list_windows` opens an eye in the middle of the monitor the keys go to and sends out one sonar ping: a ring that expands to the corners. A window's frame lights when the ring reaches its nearest edge (nearest windows first; green usable, red denylisted, amber elevated), then everything fades. About 2 s at roughly 60 frames per second, at most once every 8 s; like `click`, it holds up only screenshots.
+
+`wait` (1 second or longer) shows a small pill near the bottom of the monitor the keys go to: an hourglass, the time left ("4.2 s") and a bar that runs down. Shorter waits show nothing. Like `click`, it holds up only screenshots.
