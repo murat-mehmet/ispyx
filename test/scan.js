@@ -33,11 +33,13 @@ try {
   check('screenshot result comes back at once (before the animation ends)', !shot.isError && back < SCAN_TOTAL_MS - 400, `${Math.round(back)} ms`);
   await sleep(500);
   check('animation windows are on screen during it', !!scanWindows());
-  await sleep(300); // mid-sweep frame for a look: test/out/scan-frame.png
+  await sleep(0); // mid-sweep frame for a look: test/out/scan-frame.png
   fs.mkdirSync('test/out', { recursive: true });
-  fs.writeFileSync('test/out/scan-frame.png', shrinkToPng(w.captureScreenRect({ left: region.x - 40, top: region.y - 120, width: region.width + 80, height: region.height + 160 }), 700).png);
-  // green iris pixels somewhere in the eye area (top centre of the region)
-  const eyeCap = w.captureScreenRect({ left: region.x + 150, top: region.y - 100, width: 200, height: 180 });
+  fs.writeFileSync('test/out/scan-frame.png', shrinkToPng(w.captureScreenRect({ left: region.x - 40, top: region.y - 60, width: region.width + 80, height: region.height + 120 }), 700).png);
+  await sleep(450);
+  fs.writeFileSync('test/out/scan-frame2.png', shrinkToPng(w.captureScreenRect({ left: region.x - 40, top: region.y - 60, width: region.width + 80, height: region.height + 120 }), 700).png);
+  // green iris pixels somewhere in the eye area (middle of the region)
+  const eyeCap = w.captureScreenRect({ left: region.x + 150, top: region.y + 60, width: 200, height: 180 });
   let purple = 0;
   for (let i = 0; i < eyeCap.bits.length; i += 4) { const b = eyeCap.bits[i], g = eyeCap.bits[i + 1], r = eyeCap.bits[i + 2]; if (g > 150 && g - r > 70 && g - b > 60) purple++; }
   check('the eye (green iris) is drawn over the region', purple > 150, `${purple} green pixels`);
