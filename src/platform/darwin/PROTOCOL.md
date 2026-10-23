@@ -37,7 +37,8 @@ arguments and `result` = the return value, JSON-encoded. Differences:
 - `captureScreenRect(rect)` / `captureWindow(id)`: result is `{ file, width, height, rect, method }` where `file` is
   a path to a raw BGRA file (`width*height*4` bytes) in `$TMPDIR/ispyx/`; the client reads it, then the app
   deletes it. (Files stay small: captured at logical size.)
-- `typeUnicode`: the client loops, calling `typeChar(codePoint)` per character (the delays and `check()` stay in JS).
+- `typeUnicode`: the client loops, calling `typeChar(codePoint)` per character (the delays and `check()` stay in JS). `codePoint` 10 (newline) means the Return key; carriage
+  returns are dropped by the client.
 - `parseChord`, `parseSequence`, `insertsContent`, `chordDown` (keys table): client side; `chordDown(codes)` calls
   `keysState(codes)` -> `boolean` (all down).
 - `installStopHotkey`: the client calls `hookTouch(lingerMs)` / `hookStop()`; the app installs a `CGEventTap`

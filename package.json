@@ -21,7 +21,8 @@
     "radar-multi-test": "node test/radar-multi.js",
     "scan-multi-test": "node test/scan-multi.js",
     "auth-test": "node test/auth.js",
-    "typing-test": "node test/typing.js"
+    "typing-test": "node test/typing.js",
+    "darwin-test": "node test/darwin/client.js"
   },
   "license": "UNLICENSED",
   "private": true,
