@@ -818,7 +818,7 @@ export class ScanAnimation {
       const left = fitsL && fitsR ? (flip = !flip) : fitsL ? true : fitsR ? false : (flip = !flip);
       const ex = fitsL || fitsR
         ? (left ? rect.left - size - gap : rect.left + rect.width + gap)
-        : (left ? rect.left + gap * 2 : rect.left + rect.width - size - gap * 2); // inside the region
+        : (left ? Math.max(rect.left, m.x) + gap * 2 : Math.min(rect.left + rect.width, m.x + m.width) - size - gap * 2); // inside the region (on the monitor holding its centre)
       const ey = clamp(rect.top + (rect.height - size) / 2, m.y, m.y + m.height - size);
       const gx = left ? 0.95 : -0.95; // pupil towards the region
       const pad = 4;

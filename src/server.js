@@ -52,15 +52,8 @@ async function tryBecomeOwner() {
 /** After a capture: eye and scan line over the captured region. Returns at once; later calls queue behind it. */
 function playScan(rect) {
   const epoch = guard.epoch;
-  // a region over several monitors is scanned on each of them at once (each part gets its own eye)
-  const parts = [];
-  for (const m of w.listMonitors()) {
-    const l = Math.max(rect.left, m.left), t = Math.max(rect.top, m.top);
-    const r = Math.min(rect.left + rect.width, m.left + m.width), b = Math.min(rect.top + rect.height, m.top + m.height);
-    if (r - l >= 8 && b - t >= 8) parts.push({ left: l, top: t, width: r - l, height: b - t });
-  }
-  if (!parts.length) parts.push(rect);
-  pendingAnim = Promise.all(parts.map((p) => scan.play(p, () => guard.epoch !== epoch)));
+  // one eye and one scan line, even when the region spans several monitors (the line crosses all of them)
+  pendingAnim = scan.play(rect, () => guard.epoch !== epoch);
 }
 
 /** focus_window: green frame around the window; later calls queue behind it. */
