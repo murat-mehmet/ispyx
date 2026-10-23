@@ -15,10 +15,17 @@ const anim = new ScanAnimation({ enabled: true });
 const t0 = performance.now();
 const run = anim.play({ left: v.x, top: v.y, width: v.width, height: v.height });
 await w.sleep(SCAN_TOTAL_MS * 0.5);
+const all = w.captureScreenRect({ left: v.x, top: v.y, width: v.width, height: v.height }); // one grab: every monitor at the same instant
 mons.forEach((m, i) => {
-  const cap = w.captureScreenRect({ left: m.left, top: m.top, width: m.width, height: m.height });
   let lit = 0;
-  for (let k = 0; k < cap.bits.length; k += 4) { const b = cap.bits[k], g = cap.bits[k + 1], r = cap.bits[k + 2]; if (g > 200 && g - r > 90 && g - b > 60) lit++; }
+  for (let y = 0; y < m.height; y++) {
+    for (let x = 0; x < m.width; x++) {
+      const k = (y * v.width + (m.left - v.x + x)) * 4;
+      const b = all.bits[k], g = all.bits[k + 1], r = all.bits[k + 2];
+      if (g > 200 && g - r > 90 && g - b > 60) lit++;
+    }
+  }
+  const cap = w.captureScreenRect({ left: m.left, top: m.top, width: m.width, height: m.height });
   fs.writeFileSync(`test/out/scan-monitor${i}.png`, shrinkToPng(cap, 900).png);
   check(`monitor ${i} shows the scan line`, lit > 100, `${lit} green pixels`);
 });
