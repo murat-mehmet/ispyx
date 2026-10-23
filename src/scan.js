@@ -668,12 +668,15 @@ export class ScanAnimation {
    * first), then everything fades. Green = usable, red = on the denylist, amber = elevated (cannot be controlled).
    * `wins`: [{ rect, allowed, elevated }] in desktop pixels.
    */
-  async radar(wins, area, cancelled = () => false) {
+  async radar(wins, area, cancelled = () => false, opts = {}) {
     if (!this.enabled) return;
     let frames = null, eye = null;
     try {
       const W = area.width, H = area.height;
-      const cx = W / 2, cy = H / 2;
+      // `opts.origin` (desktop pixels) puts the eye elsewhere than the middle of `area`: with several monitors one
+      // eye sits on one of them and the ring carries on across the others (`opts.reach`, `opts.t0` keep them in step)
+      const cx = opts.origin ? opts.origin.x - area.left : W / 2, cy = opts.origin ? opts.origin.y - area.top : H / 2;
+      const hasEye = cx >= 0 && cx < W && cy >= 0 && cy < H;
       const list = wins
         .map((x) => {
           const l = Math.max(area.left, x.rect.left), t = Math.max(area.top, x.rect.top);
@@ -684,16 +687,16 @@ export class ScanAnimation {
         })
         .filter((q) => q.x1 - q.x0 >= 60 && q.y1 - q.y0 >= 40)
         .slice(0, 14);
-      if (!list.length) return;
+      if (!list.length && !opts.origin) return;
       ensurePump();
       const esize = Math.round(clamp(Math.min(W, H) * 0.11, 72, 124));
-      const reach = Math.hypot(cx, cy) + 60; // the rings run past the farthest corner
+      const reach = opts.reach ?? Math.hypot(cx, cy) + 60; // the rings run past the farthest corner
       frames = new Layer(W, H);
-      eye = new Layer(esize, esize);
+      if (hasEye) eye = new Layer(esize, esize);
       const OPEN = 300, PING = 1300, FADE = 450;
       const END = OPEN + PING;
       const front = (t) => (t < OPEN ? -1 : easeOut(clamp((t - OPEN) / PING)) * reach); // ring radius, -1 = not yet
-      const t0 = performance.now();
+      const t0 = opts.t0 ?? performance.now();
       const stats = (this.stats = { frames: 0, drawMs: 0, presentMs: 0 }); // frame cost, for tuning
       for (;;) {
         const t = performance.now() - t0;
@@ -711,10 +714,12 @@ export class ScanAnimation {
         const td = performance.now();
         frames.present(area.left, area.top, 255);
         stats.presentMs += performance.now() - td; stats.drawMs += td - tf; stats.frames++;
-        const open = t < OPEN ? ease(t / OPEN) : t > END ? 1 - ease(clamp((t - END) / FADE)) : 1;
-        const pulse = Math.max(0, 1 - Math.abs(t - OPEN - 80) / 260); // the pupil flares as the ping leaves
-        renderEye(eye.px, esize, open, 0, 0.15, pulse);
-        eye.present(area.left + cx - esize / 2, area.top + cy - esize / 2, 255 * Math.min(ease(clamp(t / OPEN)), out));
+        if (eye) {
+          const open = t < OPEN ? ease(t / OPEN) : t > END ? 1 - ease(clamp((t - END) / FADE)) : 1;
+          const pulse = Math.max(0, 1 - Math.abs(t - OPEN - 80) / 260); // the pupil flares as the ping leaves
+          renderEye(eye.px, esize, open, 0, 0.15, pulse);
+          eye.present(area.left + cx - esize / 2, area.top + cy - esize / 2, 255 * Math.min(ease(clamp(t / OPEN)), out));
+        }
         await new Promise((r) => setTimeout(r, Math.max(1, 16 - (performance.now() - tf))));
       }
     } catch (e) {

@@ -113,15 +113,22 @@ function playKeycaps(keys) {
 }
 /** list_windows: a scan line passes over the monitor and lights each window frame (at most every 8 s). */
 let lastRadar = 0;
+function radarOptions(areas, home) {
+  const origin = { x: home.left + home.width / 2, y: home.top + home.height / 2 };
+  const reach = Math.max(...areas.flatMap((a) => [a.left, a.left + a.width].flatMap((x) => [a.top, a.top + a.height].map((y) => Math.hypot(x - origin.x, y - origin.y))))) + 60;
+  return { origin, reach, t0: performance.now() };
+}
 function playRadar(list) {
   if (!config.animations || Date.now() - lastRadar < 8000) return;
   const areas = w.listMonitors().map((m) => ({ left: m.left, top: m.top, width: m.width, height: m.height }));
-  if (!areas.length) return;
+  const home = keyboardArea();
+  if (!areas.length || !home) return;
   lastRadar = Date.now();
   const epoch = guard.epoch;
   const wins = list.filter((x) => !x.minimized && x.rect && x.rect.width > 0).map((x) => ({ rect: x.rect, allowed: x.allowed, elevated: x.elevated }));
-  // every monitor gets its own eye and ping, lighting the windows that lie on it
-  const run = Promise.all(areas.map((a) => scan.radar(wins, a, () => guard.epoch !== epoch))).finally(() => effects.delete(run));
+  // one eye on the monitor the keys go to; its ping carries on across the other monitors, lighting their windows
+  const opts = radarOptions(areas, home);
+  const run = Promise.all(areas.map((a) => scan.radar(wins, a, () => guard.epoch !== epoch, opts))).finally(() => effects.delete(run));
   effects.add(run);
 }
 /** type_text: progress pill (never the text). Returns { progress, stop }. */

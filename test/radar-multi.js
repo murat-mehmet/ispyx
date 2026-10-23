@@ -13,7 +13,12 @@ const mons = w.listMonitors();
 console.log(`${mons.length} monitors: ${mons.map((m) => `${m.width}x${m.height}@${m.left},${m.top}`).join('  ')}`);
 const wins = w.listWindows().filter((q) => !q.minimized).map((q) => ({ rect: q.rect, allowed: true, elevated: q.elevated }));
 const anim = new ScanAnimation({ enabled: true });
-const run = Promise.all(mons.map((m) => anim.radar(wins, { left: m.left, top: m.top, width: m.width, height: m.height })));
+// one eye in the middle of the primary monitor; the ping runs on across the others
+const home = mons.find((m) => m.primary) ?? mons[0];
+const origin = { x: home.left + home.width / 2, y: home.top + home.height / 2 };
+const reach = Math.max(...mons.flatMap((a) => [a.left, a.left + a.width].flatMap((x) => [a.top, a.top + a.height].map((y) => Math.hypot(x - origin.x, y - origin.y))))) + 60;
+const opts = { origin, reach, t0: performance.now() };
+const run = Promise.all(mons.map((m) => anim.radar(wins, { left: m.left, top: m.top, width: m.width, height: m.height }, () => false, opts)));
 await w.sleep(1000);
 mons.forEach((m, i) => {
   const cap = w.captureScreenRect({ left: m.left, top: m.top, width: m.width, height: m.height });
