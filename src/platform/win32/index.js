@@ -13,3 +13,4 @@ export const capabilities = { elevation: true };
 
 /** Where the password hash and other per-user state live. */
 export const dataDir = () => path.join(process.env.APPDATA || path.join(process.env.USERPROFILE || '.', 'AppData', 'Roaming'), 'win-input-mcp');
+export { Layer, textMask } from './layer.js';
