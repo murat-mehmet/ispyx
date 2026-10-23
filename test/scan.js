@@ -7,7 +7,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import * as w from '../src/win32.js';
 import fs from 'node:fs';
-import { SCAN_TOTAL_MS, FLASH_TOTAL_MS } from '../src/scan.js';
+import { SCAN_TOTAL_MS, FLASH_TOTAL_MS, ScanAnimation, RIPPLE_MS, renderRipple } from '../src/scan.js';
 import { shrinkToPng } from '../src/image.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -58,6 +58,27 @@ try {
   check('full-monitor scan has its windows up', !!scanWindows());
   await call('cursor_position');
   check('full-monitor scan finishes and cleans up', !scanWindows(), `${Math.round(performance.now() - t2)} ms`);
+  // click rings, drawn directly (no real click is sent): green ring around the point, then gone
+  {
+    const anim = new ScanAnimation({ enabled: true });
+    const pt = { x: v.x + 700, y: v.y + 500 };
+    const done = anim.ripple(pt, 'left', 2);
+    await sleep(160);
+    const cap = w.captureScreenRect({ left: pt.x - 66, top: pt.y - 66, width: 132, height: 132 });
+    let ring = 0;
+    for (let i = 0; i < cap.bits.length; i += 4) { const b = cap.bits[i], g = cap.bits[i + 1], r = cap.bits[i + 2]; if (g > 200 && g - r > 90 && g - b > 60) ring++; }
+    check('click rings are drawn at the point', !!scanWindows() && ring > 60, `${ring} ring pixels`);
+    await done;
+    check('click rings are gone afterwards', !scanWindows());
+    // preview over white for a look
+    const S = 132, px = new Uint8Array(S * S * 4), out = Buffer.alloc(S * 3 * S * 4);
+    [['left', 90], ['right', 150], ['middle', 230]].forEach(([btn, ms], k) => {
+      renderRipple(px, S, ms, 2, { left: [60, 255, 110], right: [40, 200, 255], middle: [255, 190, 40] }[btn]);
+      for (let yy = 0; yy < S; yy++) for (let xx = 0; xx < S; xx++) { const i = (yy * S + xx) * 4, o = (yy * S * 3 + k * S + xx) * 4, a = px[i + 3] / 255; out[o] = px[i + 2] + 255 * (1 - a); out[o + 1] = px[i + 1] + 255 * (1 - a); out[o + 2] = px[i] + 255 * (1 - a); out[o + 3] = 255; }
+    });
+    const { encodePng } = await import('../src/image.js');
+    fs.writeFileSync('test/out/ripple.png', encodePng(out, S * 3, S));
+  }
   // focus_window on the window that already has focus (changes nothing): green frame, short wait
   const fg = w.foregroundWindow();
   if (fg) {

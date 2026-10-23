@@ -236,6 +236,41 @@ export function renderFrame(px, width, height) {
   }
 }
 
+const RIPPLE_COLORS = { left: [60, 255, 110], right: [40, 200, 255], middle: [255, 190, 40] }; // RGB
+export const RIPPLE_MS = 430, RIPPLE_GAP_MS = 120;
+const RIPPLE_SIZE = 132;
+
+/** Expanding rings (one per click of a multi-click) with a dark outline, plus a dot where the button went down. */
+export function renderRipple(px, size, t, rings, rgb) {
+  px.fill(0, 0, size * size * 4);
+  const c = size / 2;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const r = Math.hypot(x + 0.5 - c, y + 0.5 - c);
+      let pr = 0, pg = 0, pb = 0, pa = 0; // premultiplied accumulator
+      const add = (cr, cg, cb, a) => { if (a <= 0) return; pr = cr * a + pr * (1 - a); pg = cg * a + pg * (1 - a); pb = cb * a + pb * (1 - a); pa = a + pa * (1 - a); };
+      for (let k = 0; k < rings; k++) {
+        const u = (t - k * RIPPLE_GAP_MS) / RIPPLE_MS;
+        if (u <= 0 || u >= 1) continue;
+        const radius = 6 + 52 * (1 - (1 - u) ** 3);
+        const fade = (1 - u) ** 1.2;
+        const d = Math.abs(r - radius);
+        add(14, 50, 28, clamp(2.6 - Math.abs(d - 2.6)) * 0.7 * fade); // dark outline hugging the ring
+        add(rgb[0], rgb[1], rgb[2], clamp(2.2 - d) * fade); // bright ring
+        add(rgb[0], rgb[1], rgb[2], 0.18 * clamp(radius - r) * fade * 0.07); // faint fill
+      }
+      const u0 = t / 260;
+      if (u0 < 1) { // the press point
+        add(14, 50, 28, clamp(5.5 - r) * 0.8 * (1 - u0));
+        add(255, 255, 255, clamp(3.6 - r) * (1 - u0));
+      }
+      if (pa <= 0) continue;
+      const i = (y * size + x) * 4;
+      px[i] = pb; px[i + 1] = pg; px[i + 2] = pr; px[i + 3] = pa * 255;
+    }
+  }
+}
+
 const ease = (t) => t * t * (3 - 2 * t);
 const T_OPEN = 280, T_SCAN = 1100, T_CLOSE = 320;
 export const SCAN_TOTAL_MS = T_OPEN + T_SCAN + T_CLOSE;
@@ -244,9 +279,35 @@ let flip = false; // alternates the side of the eye between screenshots
 
 export const FLASH_TOTAL_MS = 760;
 
+
 export class ScanAnimation {
   constructor({ enabled = true } = {}) {
     this.enabled = enabled;
+  }
+
+  /** click: expanding rings at the pressed point (colour by button, one ring per click). Never throws. */
+  async ripple(point, button = 'left', rings = 1, cancelled = () => false) {
+    if (!this.enabled) return;
+    let layer = null;
+    try {
+      ensurePump();
+      layer = new Layer(RIPPLE_SIZE, RIPPLE_SIZE);
+      const rgb = RIPPLE_COLORS[button] ?? RIPPLE_COLORS.left;
+      const total = RIPPLE_MS + (rings - 1) * RIPPLE_GAP_MS;
+      const t0 = performance.now();
+      for (;;) {
+        const t = performance.now() - t0;
+        if (t >= total || cancelled()) break;
+        renderRipple(layer.px, RIPPLE_SIZE, t, rings, rgb);
+        layer.present(point.x - RIPPLE_SIZE / 2, point.y - RIPPLE_SIZE / 2, 255);
+        await new Promise((r) => setTimeout(r, 16));
+      }
+    } catch (e) {
+      process.stderr.write(`win-input-mcp: click effect failed (${e.message})
+`);
+    } finally {
+      layer?.destroy();
+    }
   }
 
   /** focus_window: a green frame lights up around the window (clipped to the desktop) and fades. Never throws. */

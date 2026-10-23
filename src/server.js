@@ -61,6 +61,18 @@ function playFlash(rect) {
   pendingAnim = scan.flash(rect, () => guard.epoch !== epoch);
 }
 
+/** click: rings at the point. Does not hold up later calls, only screenshots (see waitForEffects). */
+const effects = new Set();
+function playRipple(p, button, rings) {
+  const epoch = guard.epoch;
+  const run = scan.ripple({ x: p.sx, y: p.sy }, button, rings, () => guard.epoch !== epoch).finally(() => effects.delete(run));
+  effects.add(run);
+}
+/** A screenshot must not catch a running effect. */
+async function waitForEffects() {
+  while (effects.size) await Promise.all([...effects]);
+}
+
 const handlers = new Map();
 let chain = Promise.resolve();
 const UNQUEUED = new Set(['wait']);
@@ -305,6 +317,7 @@ server.registerTool('screenshot_window', {
   guard.assertUsable(win, { needVisible: false });
   entry.window = winSummary(win);
   if (win.minimized) throw new ToolError(`"${win.title}" is minimized and cannot be captured. Use focus_window first.`);
+  await waitForEffects();
   let cap = await overlay.hiddenDuring(() => w.captureWindow(win.hwnd));
   if (args.region) {
     const cropped = cropCapture(cap, args.region);
@@ -349,6 +362,7 @@ server.registerTool('screenshot_screen', {
     rect = { left: m.left, top: m.top, width: m.width, height: m.height };
   }
   entry.rect = rect;
+  await waitForEffects();
   const cap = await overlay.hiddenDuring(() => w.captureScreenRect(rect));
   playScan(rect);
   const img = shrinkToPng(cap, args.maxWidth ?? 1280);
@@ -373,6 +387,7 @@ server.registerTool('click', {
   await glide(p, args);
   await w.sleep(30);
   guard.checkKill();
+  playRipple(p, b, n);
   await withModifiers(args.modifiers, async () => {
     for (let i = 0; i < n; i++) {
       w.mouseDown(b);
