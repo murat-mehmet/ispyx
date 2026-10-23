@@ -33,7 +33,8 @@
     "scan-multi-test": "node test/scan-multi.js",
     "auth-test": "node test/auth.js",
     "typing-test": "node test/typing.js",
-    "core-test": "node test/core/effects-fake.js"
+    "core-test": "node test/core/effects-fake.js",
+    "darwin-test": "node test/darwin/client.js"
   },
   "license": "UNLICENSED",
   "private": true,
