@@ -49,6 +49,15 @@ try {
   check('the next call waited for the animation to finish', !next.isError && waited > SCAN_TOTAL_MS - 150, `${Math.round(waited)} ms since the screenshot call`);
   await sleep(200);
   check('animation windows are gone afterwards', !scanWindows());
+  // full monitor: the eye sits inside the region
+  const t2 = performance.now();
+  await call('screenshot_screen', {});
+  await sleep(700);
+  const mon = w.listMonitors().find((m) => m.primary);
+  fs.writeFileSync('test/out/scan-full.png', shrinkToPng(w.captureScreenRect({ left: mon.left, top: mon.top, width: mon.width, height: mon.height }), 1100).png);
+  check('full-monitor scan has its windows up', !!scanWindows());
+  await call('cursor_position');
+  check('full-monitor scan finishes and cleans up', !scanWindows(), `${Math.round(performance.now() - t2)} ms`);
   // a window screenshot animates too
   const notepadFree = w.listWindows().filter((x) => x.process === 'notepad.exe').length === 0;
   const first = w.listWindows().find((x) => x.visible && x.title && x.process !== 'node.exe');

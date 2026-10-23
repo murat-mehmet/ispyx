@@ -222,13 +222,19 @@ export class ScanAnimation {
       const size = Math.round(clamp(Math.min(rect.width, rect.height) * 0.3, 56, 150));
       const bandH = 56;
       // the eye floats beside the region (alternating sides; the side with more room if only one fits) and looks at it
-      const v = w.virtualScreen();
+      // (room is measured on the monitor holding the region's centre; with no room, as for a full-screen scan,
+      // the eye sits inside the region, inset from its left or right edge)
+      const cxr = rect.left + rect.width / 2, cyr = rect.top + rect.height / 2;
+      const mon = w.listMonitors().find((m) => cxr >= m.left && cxr < m.left + m.width && cyr >= m.top && cyr < m.top + m.height) ?? w.virtualScreen();
+      const m = { x: mon.left ?? mon.x, y: mon.top ?? mon.y, width: mon.width, height: mon.height };
       const gap = 18;
-      const roomL = rect.left - v.x, roomR = v.x + v.width - (rect.left + rect.width);
+      const roomL = rect.left - m.x, roomR = m.x + m.width - (rect.left + rect.width);
       const fitsL = roomL >= size + gap, fitsR = roomR >= size + gap;
-      const left = fitsL && fitsR ? (flip = !flip) : fitsL || (!fitsR && roomL >= roomR);
-      const ex = left ? Math.max(v.x, rect.left - size - gap) : Math.min(v.x + v.width - size, rect.left + rect.width + gap);
-      const ey = clamp(rect.top + (rect.height - size) / 2, v.y, v.y + v.height - size);
+      const left = fitsL && fitsR ? (flip = !flip) : fitsL ? true : fitsR ? false : (flip = !flip);
+      const ex = fitsL || fitsR
+        ? (left ? rect.left - size - gap : rect.left + rect.width + gap)
+        : (left ? rect.left + gap * 2 : rect.left + rect.width - size - gap * 2); // inside the region
+      const ey = clamp(rect.top + (rect.height - size) / 2, m.y, m.y + m.height - size);
       const gx = left ? 0.95 : -0.95; // pupil towards the region
       const pad = 4;
       const lx = Math.floor(Math.min(ex, rect.left) - pad), rx = Math.ceil(Math.max(ex + size, rect.left + rect.width) + pad);
