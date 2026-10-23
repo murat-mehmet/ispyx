@@ -432,7 +432,7 @@ export class ScanAnimation {
       const t0 = performance.now();
       let endAt = 0, endPoint = null;
       for (;;) {
-        const t = performance.now() - t0;
+        const tf = performance.now(), t = tf - t0;
         if (cancelled()) break;
         if (ended && !endAt) { endAt = t; const c = w.cursorPos(); endPoint = { x: c.x, y: c.y }; pts.push({ ...endPoint, t }); }
         if (endAt && t - endAt > TRAIL_FADE_MS) break;
@@ -455,7 +455,7 @@ export class ScanAnimation {
         }
         if (showMarker) marker(layer.px, layer.width, layer.height, start.x - left, start.y - top, rgb);
         layer.present(left, top, 255 * fade);
-        await new Promise((r) => setTimeout(r, 16));
+        await new Promise((r) => setTimeout(r, Math.max(1, 16 - (performance.now() - tf))));
       }
       layer.destroy();
       layer = null;
@@ -485,7 +485,7 @@ export class ScanAnimation {
       const t0 = performance.now();
       let endAt = 0;
       for (;;) {
-        const t = performance.now() - t0;
+        const tf = performance.now(), t = tf - t0;
         if (cancelled()) break;
         if (ended && t >= 380 && !endAt) endAt = t;
         if (endAt && t - endAt > 220) break;
@@ -515,7 +515,7 @@ export class ScanAnimation {
           }
         }
         layer.present(point.x - c, point.y - c, 255);
-        await new Promise((r) => setTimeout(r, 16));
+        await new Promise((r) => setTimeout(r, Math.max(1, 16 - (performance.now() - tf))));
       }
     } catch (e) {
       process.stderr.write(`win-input-mcp: scroll effect failed (${e.message})
@@ -576,11 +576,11 @@ export class ScanAnimation {
       const hold = 420 + 140 * chords.length;
       const t0 = performance.now();
       for (;;) {
-        const t = performance.now() - t0;
+        const tf = performance.now(), t = tf - t0;
         if (t >= hold + 260 || cancelled()) break;
         const a = t < 110 ? ease(t / 110) : t < hold ? 1 : 1 - ease((t - hold) / 260);
         layer.present(left, top + (1 - Math.min(1, t / 110)) * 14, 255 * a);
-        await new Promise((r) => setTimeout(r, 16));
+        await new Promise((r) => setTimeout(r, Math.max(1, 16 - (performance.now() - tf))));
       }
     } catch (e) {
       process.stderr.write(`win-input-mcp: key effect failed (${e.message})\n`);
@@ -752,11 +752,11 @@ export class ScanAnimation {
       const total = RIPPLE_MS + (rings - 1) * RIPPLE_GAP_MS;
       const t0 = performance.now();
       for (;;) {
-        const t = performance.now() - t0;
+        const tf = performance.now(), t = tf - t0;
         if (t >= total || cancelled()) break;
         renderRipple(layer.px, RIPPLE_SIZE, t, rings, rgb);
         layer.present(point.x - RIPPLE_SIZE / 2, point.y - RIPPLE_SIZE / 2, 255);
-        await new Promise((r) => setTimeout(r, 16));
+        await new Promise((r) => setTimeout(r, Math.max(1, 16 - (performance.now() - tf))));
       }
     } catch (e) {
       process.stderr.write(`win-input-mcp: click effect failed (${e.message})
@@ -780,12 +780,12 @@ export class ScanAnimation {
       renderFrame(layer.px, layer.width, layer.height);
       const t0 = performance.now();
       for (;;) {
-        const t = performance.now() - t0;
+        const tf = performance.now(), t = tf - t0;
         if (t >= FLASH_TOTAL_MS || cancelled()) break;
         // on, a short dip, on again (a double blink catches the eye), then fade
         const a = t < 80 ? t / 80 : t < 280 ? 1 : t < 380 ? 1 - 0.65 * Math.sin(((t - 280) / 100) * Math.PI) : t < 480 ? 1 : 1 - ease((t - 480) / (FLASH_TOTAL_MS - 480));
         layer.present(left, top, 255 * a);
-        await new Promise((r) => setTimeout(r, 16));
+        await new Promise((r) => setTimeout(r, Math.max(1, 16 - (performance.now() - tf))));
       }
     } catch (e) {
       process.stderr.write(`win-input-mcp: focus effect failed (${e.message})
@@ -831,7 +831,7 @@ export class ScanAnimation {
       const midY = rect.top + rect.height / 2;
       const t0 = performance.now();
       for (;;) {
-        const t = performance.now() - t0;
+        const tf = performance.now(), t = tf - t0;
         if (t >= SCAN_TOTAL_MS || cancelled()) break;
         let open, fade, p = 0;
         if (t < T_OPEN) { open = ease(t / T_OPEN); fade = open; }
@@ -853,7 +853,7 @@ export class ScanAnimation {
           band.present(rect.left, rect.top, 0, 1);
         }
         eye.present(ex, ey, 255 * fade);
-        await new Promise((r) => setTimeout(r, 16));
+        await new Promise((r) => setTimeout(r, Math.max(1, 16 - (performance.now() - tf))));
       }
     } catch (e) {
       process.stderr.write(`win-input-mcp: scan animation failed (${e.message})\n`);
