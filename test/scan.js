@@ -113,6 +113,22 @@ try {
     check('move trail and arrival ring are gone afterwards', !scanWindows());
     w.mouseMoveTo(home.x, home.y);
   }
+  // scroll cue: chevrons beside the point while the wheel turns (drawn directly, nothing is scrolled)
+  {
+    const anim = new ScanAnimation({ enabled: true });
+    const pt = { x: v.x + 900, y: v.y + 500 };
+    let stop; const stopped = new Promise((r) => { stop = r; });
+    const run = anim.wheelCue(pt, 1, -1, 1, stopped);
+    await sleep(350);
+    const cap = w.captureScreenRect({ left: pt.x - 90, top: pt.y - 90, width: 180, height: 180 });
+    let lit = 0;
+    for (let i = 0; i < cap.bits.length; i += 4) { const b = cap.bits[i], g = cap.bits[i + 1], r = cap.bits[i + 2]; if (g > 200 && g - r > 90 && g - b > 60) lit++; }
+    fs.writeFileSync('test/out/scroll-cue.png', shrinkToPng(cap, 360).png);
+    check('scroll chevrons are drawn beside the point', !!scanWindows() && lit > 40, `${lit} chevron pixels`);
+    stop();
+    await run;
+    check('scroll chevrons are gone afterwards', !scanWindows());
+  }
   // focus_window on the window that already has focus (changes nothing): green frame, short wait
   const fg = w.foregroundWindow();
   if (fg) {

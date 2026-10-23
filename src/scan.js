@@ -327,7 +327,7 @@ export class ScanAnimation {
    * fading with age. When `stopped` resolves (button released) the trail fades out and rings mark the end.
    * `bounds` {left, top, right, bottom}: where the drag can go. Never throws.
    */
-  async trail(start, bounds, stopped, cancelled = () => false, button = 'left', { marker: showMarker = true, life = TRAIL_LIFE_MS } = {}) {
+  async trail(start, bounds, stopped, cancelled = () => false, button = 'left', { marker: showMarker = true, life = TRAIL_LIFE_MS, ring = true } = {}) {
     if (!this.enabled) return;
     let layer = null;
     let ended = false;
@@ -371,9 +371,66 @@ export class ScanAnimation {
       }
       layer.destroy();
       layer = null;
-      if (endPoint && !cancelled()) await this.ripple(endPoint, button, 1, cancelled);
+      if (endPoint && ring && !cancelled()) await this.ripple(endPoint, button, 1, cancelled);
     } catch (e) {
       process.stderr.write(`win-input-mcp: drag effect failed (${e.message})
+`);
+    } finally {
+      layer?.destroy();
+    }
+  }
+
+  /**
+   * scroll: chevrons beside the pointer travel in the scroll direction while the wheel turns (until `stopped`
+   * resolves, at least 380 ms, then a short fade). dirV: +1 up / -1 down / 0, dirH: +1 right / -1 left / 0. Never throws.
+   */
+  async wheelCue(point, dirV, dirH, speed, stopped, cancelled = () => false) {
+    if (!this.enabled || (!dirV && !dirH)) return;
+    let layer = null;
+    let ended = false;
+    stopped.then(() => { ended = true; });
+    try {
+      ensurePump();
+      const S = 180, c = S / 2;
+      layer = new Layer(S, S);
+      const SP = 24, L = SP * 3, arm = 13;
+      const t0 = performance.now();
+      let endAt = 0;
+      for (;;) {
+        const t = performance.now() - t0;
+        if (cancelled()) break;
+        if (ended && t >= 380 && !endAt) endAt = t;
+        if (endAt && t - endAt > 220) break;
+        const fade = endAt ? 1 - clamp((t - endAt) / 220) : clamp(t / 90);
+        layer.px.fill(0);
+        const phase = (t * 0.09 * clamp(speed, 0.6, 3)) % SP;
+        for (let pass = 0; pass < 2; pass++) {
+          for (let k = 0; k < 4; k++) {
+            const pos = k * SP + phase; // 0..L+SP along the travel direction
+            const a = Math.sin(Math.PI * clamp(pos / L)) * fade;
+            if (a < 0.03) continue;
+            for (const [dir, horiz] of [[dirV, false], [dirH, true]]) {
+              if (!dir) continue;
+              const along = (pos - L / 2) * dir, anchor = horiz ? { x: c + along, y: c + 40 } : { x: c + 40, y: c - along };
+              // chevron: tip leads in the travel direction
+              const tip = horiz ? { x: anchor.x + 6 * dir, y: anchor.y } : { x: anchor.x, y: anchor.y - 6 * dir };
+              const e1 = horiz ? { x: anchor.x - 6 * dir, y: anchor.y - arm } : { x: anchor.x - arm, y: anchor.y + 6 * dir };
+              const e2 = horiz ? { x: anchor.x - 6 * dir, y: anchor.y + arm } : { x: anchor.x + arm, y: anchor.y + 6 * dir };
+              if (pass === 0) {
+                stroke(layer.px, S, S, e1.x, e1.y, tip.x, tip.y, 4.6, [14, 50, 28], a * 0.8);
+                stroke(layer.px, S, S, tip.x, tip.y, e2.x, e2.y, 4.6, [14, 50, 28], a * 0.8);
+              } else {
+                stroke(layer.px, S, S, e1.x, e1.y, tip.x, tip.y, 2.6, [60, 255, 110], a);
+                stroke(layer.px, S, S, tip.x, tip.y, e2.x, e2.y, 2.6, [60, 255, 110], a);
+              }
+            }
+          }
+        }
+        layer.present(point.x - c, point.y - c, 255);
+        await new Promise((r) => setTimeout(r, 16));
+      }
+    } catch (e) {
+      process.stderr.write(`win-input-mcp: scroll effect failed (${e.message})
 `);
     } finally {
       layer?.destroy();

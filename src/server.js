@@ -77,6 +77,16 @@ function playTrail(a, z, button, opts) {
   effects.add(run);
   return stop;
 }
+/** scroll: chevrons beside the pointer while the wheel turns; the returned function ends it. */
+function playWheelCue(p, vert, horiz) {
+  const epoch = guard.epoch;
+  let stop;
+  const stopped = new Promise((r) => { stop = r; });
+  const speed = Math.max(Math.abs(vert), Math.abs(horiz)) / 3;
+  const run = scan.wheelCue({ x: p.sx, y: p.sy }, Math.sign(vert), Math.sign(horiz), speed, stopped, () => guard.epoch !== epoch).finally(() => effects.delete(run));
+  effects.add(run);
+  return stop;
+}
 /** A screenshot must not catch a running effect. */
 async function waitForEffects() {
   while (effects.size) await Promise.all([...effects]);
@@ -218,13 +228,15 @@ async function pointMapper(args, entry) {
  * Move the pointer to p like a hand would: a curved path with a smooth speed profile, taking a random
  * 300-1000 ms (config moveMinMs/moveMaxMs, or durationMs).
  */
-async function glide(p, args = {}) {
+async function glide(p, args = {}, { trail = true, ring = false } = {}) {
   const from = w.cursorPos();
   const dist = Math.hypot(p.sx - from.x, p.sy - from.y);
   if (dist < 4) {
     w.mouseMoveTo(p.sx, p.sy);
     return;
   }
+  const stopTrail = trail ? playTrail({ sx: from.x, sy: from.y }, p, 'left', { marker: false, life: 520, ring }) : () => {}; // a ring where it lands only for the move tool (click draws its own)
+  try {
   const ms = Math.max(MIN_GLIDE_MS, args.durationMs ?? randomDuration(config.moveMinMs, config.moveMaxMs));
   const path = curvedPath(from, { x: p.sx, y: p.sy });
   const v = w.virtualScreen();
@@ -241,6 +253,9 @@ async function glide(p, args = {}) {
     await w.sleep(8);
   }
   w.mouseMoveTo(p.sx, p.sy);
+  } finally {
+    stopTrail();
+  }
 }
 
 /**
@@ -414,13 +429,7 @@ server.registerTool('move', {
   const map = await pointMapper(args, entry);
   const p = map(args.x, args.y);
   entry.coords = { x: args.x, y: args.y, screen: { x: p.sx, y: p.sy } };
-  const from = w.cursorPos();
-  const stopTrail = Math.hypot(p.sx - from.x, p.sy - from.y) >= 4 ? playTrail({ sx: from.x, sy: from.y }, p, 'left', { marker: false, life: 520 }) : () => {};
-  try {
-    await glide(p, args);
-  } finally {
-    stopTrail();
-  }
+  await glide(p, args, { ring: true });
   return json({ ok: true, screen: { x: p.sx, y: p.sy } });
 }));
 
@@ -480,7 +489,7 @@ server.registerTool('drag', {
     const stopTrail = playTrail(a, z2, b);
     try {
       await w.sleep(40);
-      await glide(z2, args);
+      await glide(z2, args, { trail: false });
       await w.sleep(40);
     } finally {
       w.mouseUp(b);
@@ -508,9 +517,14 @@ server.registerTool('scroll', {
   await w.sleep(30);
   guard.checkKill();
   let stats = { events: 1, ms: 0 };
-  await withModifiers(args.modifiers, async () => {
-    stats = await smoothWheel(args.amount ?? 0, args.horizontal ?? 0, args);
-  });
+  const stopCue = playWheelCue(p, args.amount ?? 0, args.horizontal ?? 0);
+  try {
+    await withModifiers(args.modifiers, async () => {
+      stats = await smoothWheel(args.amount ?? 0, args.horizontal ?? 0, args);
+    });
+  } finally {
+    stopCue();
+  }
   entry.events = stats.events;
   return json({ ok: true, screen: { x: p.sx, y: p.sy }, wheelEvents: stats.events, ms: stats.ms });
 }));
