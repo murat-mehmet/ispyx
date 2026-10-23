@@ -21,8 +21,13 @@ private final class ContentBox {
 }
 
 private func waitOrThrow(_ sem: DispatchSemaphore, _ what: String) throws {
-    if sem.wait(timeout: .now() + 6.0) == .timedOut {
-        throw HelperError("Capturing \(what) timed out. " + permissionHint)
+    // Pump the run loop while waiting: a completion handler delivered on the main queue must not deadlock us.
+    let deadline = Date(timeIntervalSinceNow: 6.0)
+    while sem.wait(timeout: .now()) == .timedOut {
+        if Date() >= deadline {
+            throw HelperError("Capturing \(what) timed out. " + permissionHint)
+        }
+        RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
     }
 }
 
@@ -169,8 +174,12 @@ func registerCaptureServices(_ r: Router) {
         // Clamp to the union of the monitors.
         var union = CGRect.null
         for m in ispyxMonitorRects() { union = union.union(m) }
-        let rect = want.intersection(union).integral
-        if rect.isNull || rect.width < 1 || rect.height < 1 {
+        let clipped = want.intersection(union)
+        if clipped.isNull || clipped.isEmpty {
+            throw HelperError("The requested area is outside every monitor.")
+        }
+        let rect = clipped.integral
+        if rect.width < 1 || rect.height < 1 {
             throw HelperError("The requested area is outside every monitor.")
         }
         let w = Int(rect.width)
