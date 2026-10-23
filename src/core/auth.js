@@ -5,19 +5,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import { ToolError } from './guard.js';
+import platform from '../platform/index.js';
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const DIALOG = path.join(HERE, 'auth-dialog.ps1');
 const UNIT_MIN = { minutes: 1, hours: 60, days: 1440 };
 const MAX_MIN = 365 * 1440;
 const MIN_PASSWORD = 6;
 const MAX_WRONG = 3;
 const ITER = 200000;
 
-export const defaultAuthFile = () => path.join(process.env.APPDATA || path.join(process.env.USERPROFILE || '.', 'AppData', 'Roaming'), 'win-input-mcp', 'auth.json');
+export const defaultAuthFile = () => path.join(platform.dataDir(), 'auth.json');
 
 export const toMinutes = (value, unit) => Math.min(MAX_MIN, Math.max(1, Math.round(Number(value) * (UNIT_MIN[unit] ?? 60))));
 
@@ -30,43 +27,9 @@ export function fromMinutes(min) {
 
 const hash = (pw, salt, iter) => crypto.pbkdf2Sync(pw, Buffer.from(salt, 'hex'), iter, 32, 'sha256').toString('hex');
 
-/**
- * Real password window (PowerShell + WinForms). Resolves to the dialog's JSON, or
- * { cancel: true, reason } where reason says why: 'timed out', 'closed by the user', or 'dialog failed: ...'.
- */
-export function showDialog(opts, ms) {
-  return new Promise((resolve) => {
-    const args = ['-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-File', DIALOG,
-      '-Mode', opts.mode,
-      '-Message', ` ${opts.message || ''}`, // leading space: a bare "-" would be read as a parameter name
-      '-Seconds', String(Math.max(1, Math.ceil(ms / 1000))),
-      '-Value', String(opts.value), '-Unit', opts.unit];
-    const p = spawn('powershell.exe', args, { windowsHide: false, stdio: ['ignore', 'pipe', 'pipe'] });
-    let out = '';
-    let err = '';
-    let killed = false;
-    p.stdout.on('data', (d) => { out += d; });
-    p.stderr.on('data', (d) => { err += d; });
-    const kill = setTimeout(() => { killed = true; try { p.kill(); } catch { /* gone */ } }, ms + 1500);
-    const finish = (code) => {
-      clearTimeout(kill);
-      try {
-        const r = JSON.parse(out.trim().split('\n').pop());
-        if (r.cancel) r.reason = r.reason === 'timeout' ? 'timed out' : 'closed by the user';
-        resolve(r);
-      } catch {
-        const why = killed ? 'timed out' : `dialog failed (exit ${code}): ${(err.trim().split('\n')[0] || 'no output').slice(0, 120)}`;
-        resolve({ cancel: true, reason: why });
-      }
-    };
-    p.on('close', finish);
-    p.on('error', (e) => { clearTimeout(kill); resolve({ cancel: true, reason: `dialog failed to start: ${e.message}` }); });
-  });
-}
-
 export class Auth {
   /** `prompt(opts, ms)` is injectable so tests need no window. */
-  constructor({ enabled, file = defaultAuthFile(), timeoutMs = 30000 /* fixed for the server */, prompt = showDialog, now = () => Date.now() }) {
+  constructor({ enabled, file = defaultAuthFile(), timeoutMs = 30000 /* fixed for the server */, prompt = platform.showDialog, now = () => Date.now() }) {
     Object.assign(this, { enabled, file, timeoutMs, prompt, now });
     this.pending = null;
     this.until = 0;

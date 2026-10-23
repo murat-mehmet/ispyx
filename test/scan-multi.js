@@ -1,8 +1,8 @@
 // Screenshot scan over the whole desktop: one eye, one scan line crossing every monitor. Draws directly, captures nothing.
 import fs from 'node:fs';
-import * as w from '../src/win32.js';
-import { ScanAnimation, SCAN_TOTAL_MS } from '../src/scan.js';
-import { shrinkToPng } from '../src/image.js';
+import w from '../src/platform/index.js';
+import { ScanAnimation, SCAN_TOTAL_MS } from '../src/effects/scan.js';
+import { shrinkToPng } from '../src/core/image.js';
 
 w.init();
 fs.mkdirSync('test/out', { recursive: true });

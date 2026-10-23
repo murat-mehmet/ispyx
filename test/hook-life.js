@@ -1,6 +1,6 @@
 // The Alt+Esc hook exists only while working: installed on touch(), removed after the linger, kept by repeated touches.
-import * as w from '../src/win32.js';
-import { installStopHotkey } from '../src/hotkey.js';
+import w from '../src/platform/index.js';
+import { installStopHotkey } from '../src/platform/win32/hotkey.js';
 w.init();
 let failed = 0;
 const check = (n, ok) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}`); if (!ok) failed++; };

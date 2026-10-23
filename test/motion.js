@@ -5,8 +5,8 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import * as w from '../src/win32.js';
-import { curvedPath, ease, randomDuration, typingDelays } from '../src/motion.js';
+import w from '../src/platform/index.js';
+import { curvedPath, ease, randomDuration, typingDelays } from '../src/core/motion.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 w.init();

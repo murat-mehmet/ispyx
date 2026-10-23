@@ -9,8 +9,8 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import * as w from '../src/win32.js';
-import { decodePng } from '../src/image.js';
+import w from '../src/platform/index.js';
+import { decodePng } from '../src/core/image.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'test', 'out');

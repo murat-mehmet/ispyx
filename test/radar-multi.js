@@ -1,8 +1,8 @@
 // list_windows radar on every monitor: draws the effect directly (nothing is listed or sent) and checks each monitor shows it.
 import fs from 'node:fs';
-import * as w from '../src/win32.js';
-import { ScanAnimation } from '../src/scan.js';
-import { shrinkToPng } from '../src/image.js';
+import w from '../src/platform/index.js';
+import { ScanAnimation } from '../src/effects/scan.js';
+import { shrinkToPng } from '../src/core/image.js';
 
 w.init();
 fs.mkdirSync('test/out', { recursive: true });

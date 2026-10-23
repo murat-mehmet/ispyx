@@ -7,8 +7,8 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import * as w from '../src/win32.js';
-import { OVERLAY_CLASS } from '../src/overlay.js';
+import w from '../src/platform/index.js';
+import { OVERLAY_CLASS } from '../src/platform/win32/overlay.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 w.init();

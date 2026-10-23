@@ -5,8 +5,8 @@ import os from 'node:os';
 import fs from 'node:fs';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import * as w from '../src/win32.js';
-import { typingDelays } from '../src/motion.js';
+import w from '../src/platform/index.js';
+import { typingDelays } from '../src/core/motion.js';
 
 const TARGET = path.join(path.dirname(fileURLToPath(import.meta.url)), 'typing-target.ps1');
 w.init();

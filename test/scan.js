@@ -5,10 +5,10 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import * as w from '../src/win32.js';
+import w from '../src/platform/index.js';
 import fs from 'node:fs';
-import { SCAN_TOTAL_MS, FLASH_TOTAL_MS, ScanAnimation, RIPPLE_MS, renderRipple, keyLabels } from '../src/scan.js';
-import { shrinkToPng } from '../src/image.js';
+import { SCAN_TOTAL_MS, FLASH_TOTAL_MS, ScanAnimation, RIPPLE_MS, renderRipple, keyLabels } from '../src/effects/scan.js';
+import { shrinkToPng } from '../src/core/image.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 w.init();
@@ -76,7 +76,7 @@ try {
       renderRipple(px, S, ms, 2, { left: [60, 255, 110], right: [40, 200, 255], middle: [255, 190, 40] }[btn]);
       for (let yy = 0; yy < S; yy++) for (let xx = 0; xx < S; xx++) { const i = (yy * S + xx) * 4, o = (yy * S * 3 + k * S + xx) * 4, a = px[i + 3] / 255; out[o] = px[i + 2] + 255 * (1 - a); out[o + 1] = px[i + 1] + 255 * (1 - a); out[o + 2] = px[i] + 255 * (1 - a); out[o + 3] = 255; }
     });
-    const { encodePng } = await import('../src/image.js');
+    const { encodePng } = await import('../src/core/image.js');
     fs.writeFileSync('test/out/ripple.png', encodePng(out, S * 3, S));
   }
   // drag trail: the effect follows the real pointer (moved here with no button down), then fades and rings the end

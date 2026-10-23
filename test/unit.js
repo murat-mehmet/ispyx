@@ -1,9 +1,9 @@
 // Unit checks that need no foreign window: PNG round trip, key parsing, password-field detection
 // (against an Edit control this test creates itself).
 import koffi from 'koffi';
-import * as w from '../src/win32.js';
-import { encodePng, decodePng, toRgbaScaled } from '../src/image.js';
-import { parseSequence, insertsContent } from '../src/keys.js';
+import w from '../src/platform/index.js';
+import { encodePng, decodePng, toRgbaScaled } from '../src/core/image.js';
+import { parseSequence, insertsContent } from '../src/platform/win32/keys.js';
 
 let failed = 0;
 const check = (name, ok, detail = '') => {
@@ -28,7 +28,7 @@ check('ctrl+v counts as content insertion', insertsContent(parseSequence('ctrl+v
 
 // password gate (fake prompt and clock, temp file; no window)
 {
-  const { Auth, toMinutes, fromMinutes } = await import('../src/auth.js');
+  const { Auth, toMinutes, fromMinutes } = await import('../src/core/auth.js');
   const fs = await import('node:fs');
   const os = await import('node:os');
   const pathMod = await import('node:path');

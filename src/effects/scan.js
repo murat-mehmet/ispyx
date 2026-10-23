@@ -2,8 +2,8 @@
 // a glowing green scan line that sweeps the region from top to bottom. Two click-through, per-pixel-alpha windows;
 // pixels are drawn in software into DIB sections, so nothing here depends on GDI+.
 import koffi from 'koffi';
-import { ensurePump } from './pump.js';
-import * as w from './win32.js';
+import { ensurePump } from '../platform/win32/pump.js';
+import * as w from '../platform/win32/win32.js';
 
 const user32 = koffi.load('user32.dll');
 const gdi32 = koffi.load('gdi32.dll');

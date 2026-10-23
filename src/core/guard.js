@@ -3,11 +3,10 @@ import fs from 'node:fs';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import * as w from './win32.js';
-import { chordDown } from './hotkey.js';
-import { parseChord } from './keys.js';
+import w from '../platform/index.js';
+const { chordDown, parseChord } = w;
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export class ToolError extends Error {}
 
