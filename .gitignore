@@ -7,3 +7,4 @@ npm-debug.log*
 dist/
 native/macos/**/.build/
 .DS_Store
+.claude/
