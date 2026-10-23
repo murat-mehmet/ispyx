@@ -730,6 +730,17 @@ export class ScanAnimation {
     }
   }
 
+  /**
+   * The radar over all monitors (`areas`): one eye in the middle of `home`, one ping that runs on across the others.
+   * This is the one entry point; `radar` alone draws a single monitor.
+   */
+  radarAll(wins, areas, home, cancelled = () => false) {
+    const origin = { x: home.left + home.width / 2, y: home.top + home.height / 2 };
+    const reach = Math.max(...areas.flatMap((a) => [a.left, a.left + a.width].flatMap((x) => [a.top, a.top + a.height].map((y) => Math.hypot(x - origin.x, y - origin.y))))) + 60;
+    const opts = { origin, reach, t0: performance.now() };
+    return Promise.all(areas.map((a) => this.radar(wins, a, cancelled, opts)));
+  }
+
   /** click: expanding rings at the pressed point (colour by button, one ring per click). Never throws. */
   async ripple(point, button = 'left', rings = 1, cancelled = () => false) {
     if (!this.enabled) return;

@@ -172,7 +172,7 @@ try {
     const mon = w.listMonitors().find((m) => m.primary);
     const wins = w.listWindows().filter((q) => !q.minimized).map((q) => ({ rect: q.rect, allowed: true, elevated: q.elevated }));
     const rt0 = performance.now();
-    const run = anim.radar(wins, { left: mon.left, top: mon.top, width: mon.width, height: mon.height });
+    const run = anim.radarAll(wins, w.listMonitors().map((m) => ({ left: m.left, top: m.top, width: m.width, height: m.height })), mon);
     await sleep(1000);
     const cap = w.captureScreenRect({ left: mon.left, top: mon.top, width: mon.width, height: mon.height });
     let lit = 0;
