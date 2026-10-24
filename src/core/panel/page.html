@@ -80,7 +80,7 @@ button.link:hover{background:none;color:var(--fg)}
     <div class="sub" id="meta"></div>
   </div>
 </header>
-<div id="off" hidden>Ispyx has quit. You can close this window.</div>
+<div id="off" hidden>Ispyx has quit.</div>
 <div id="app" hidden>
 
 <section id="sPerm" hidden>
@@ -92,11 +92,11 @@ button.link:hover{background:none;color:var(--fg)}
   <h2>Connect to your AI app</h2>
   <div class="card">
     <div class="item">
-      <p class="lbl">Claude Code: run this once in a terminal.</p>
+      <p class="lbl">Claude Code: run once in a terminal.</p>
       <div class="code"><pre id="cmd"></pre><button type="button" id="cmdCopy">Copy</button></div>
     </div>
     <div class="item">
-      <p class="lbl">Claude Desktop: add this to <span id="cfgName">claude_desktop_config.json</span>, then restart Claude Desktop.</p>
+      <p class="lbl">Claude Desktop: add to <span id="cfgName">claude_desktop_config.json</span>, then restart it.</p>
       <div class="code"><pre id="cfg"></pre><button type="button" id="cfgCopy">Copy</button></div>
       <div class="btns" id="cfgBtns" hidden><button type="button" id="cfgShow">Show Config File</button></div>
     </div>
@@ -110,15 +110,15 @@ button.link:hover{background:none;color:var(--fg)}
 <section id="sGen" hidden>
   <h2>General</h2>
   <div class="card">
-    <div class="item line" id="rAuto" hidden><label for="auto" id="autoLbl">Open Ispyx at login</label><span class="sw"><input type="checkbox" id="auto"><i></i></span></div>
-    <div class="item line" id="rFx" hidden><label for="fx">Show effects while the assistant works</label><span class="sw"><input type="checkbox" id="fx"><i></i></span></div>
+    <div class="item line" id="rAuto" hidden><label for="auto" id="autoLbl">Open at login</label><span class="sw"><input type="checkbox" id="auto"><i></i></span></div>
+    <div class="item line" id="rFx" hidden><label for="fx">Show effects</label><span class="sw"><input type="checkbox" id="fx"><i></i></span></div>
   </div>
 </section>
 
 <section id="sAct" hidden>
   <h2>Activity</h2>
   <div class="card">
-    <div class="item line" id="rClients" hidden><span>Connected AI clients</span><span class="v" id="clients"></span></div>
+    <div class="item line" id="rClients" hidden><span>AI clients</span><span class="v" id="clients"></span></div>
     <ul id="recent" hidden></ul>
   </div>
 </section>
@@ -127,7 +127,7 @@ button.link:hover{background:none;color:var(--fg)}
   <h2>Safety</h2>
   <div class="card">
     <div class="item line" id="rPw" hidden><span>Password set</span><span class="v" id="pw"></span></div>
-    <div class="item" id="rDeny" hidden><span>Never touched (denylist)</span><div class="tags" id="deny"></div></div>
+    <div class="item" id="rDeny" hidden><span>Never touched</span><div class="tags" id="deny"></div></div>
   </div>
 </section>
 
@@ -208,11 +208,11 @@ function render(s){
   var missing=perms?perms.filter(function(p){return !p.granted}).length:0;
   $("app").hidden=false;
 
-  setText("head",missing?"Ispyx needs your permission":"Ispyx is running");
+  setText("head",missing?"Permission needed":"Ispyx is running");
   $("state").className="sub "+(missing?"warn":"run");
   var n=s.clients;
-  setText("stateTxt",missing?"Switch Ispyx on for the items marked below."
-    :typeof n==="number"?(n===0?"Ready. No AI client is connected right now.":n===1?"Ready. 1 AI client is connected.":"Ready. "+n+" AI clients are connected."):"Ready.");
+  setText("stateTxt",missing?"Allow the items below."
+    :typeof n==="number"?(n===0?"No AI client connected":n===1?"1 AI client connected":n+" AI clients connected"):"Ready");
   var meta=["v"+s.version];
   if(typeof s.uptimeMs==="number")meta.push("up "+fmt(s.uptimeMs));
   if(s.pid!=null)meta.push("pid "+s.pid);
@@ -230,15 +230,14 @@ function render(s){
   }
 
   var stop=s.stopLabel||"the stop key";
-  setText("usage","Press "+stop+" to stop whatever the assistant is doing."
-    +(mac?" A second press within 5 seconds shuts the assistant’s connection down.":"")
-    +" While the assistant works, a banner shows at the top of the screen. Ispyx lives in the "
-    +(mac?"menu bar (the eye icon)":"notification area (the eye icon)")+"; this window can be reopened from there.");
+  setText("usage","Press "+stop+" to stop the assistant."
+    +(mac?" Press twice to disconnect it.":"")
+    +" Ispyx lives in the "+(mac?"menu bar":"tray")+".");
 
   var hasAuto=typeof s.autostart==="boolean",hasFx=typeof s.effectsEnabled==="boolean";
   show("sGen",hasAuto||hasFx);show("rAuto",hasAuto);show("rFx",hasFx);
   if(hasAuto){
-    setText("autoLbl",s.autostartLabel||(mac?"Open Ispyx at login":"Open Ispyx at Windows start"));
+    setText("autoLbl",s.autostartLabel||(mac?"Open at login":"Open at Windows start"));
     if(!busy.auto)$("auto").checked=s.autostart;
   }
   if(hasFx&&!busy.fx)$("fx").checked=s.effectsEnabled;
@@ -282,7 +281,7 @@ $("cfgShow").addEventListener("click",function(){act("showConfigFile")});
 $("log").addEventListener("click",function(){act("openLog")});
 $("end").addEventListener("click",function(){
   if(last&&last.platform==="darwin"){act("close");return}
-  if(!confirm("Quit Ispyx? AI tools will lose control of this computer until it is opened again."))return;
+  if(!confirm("Quit Ispyx? AI tools lose access until it is reopened."))return;
   act("quit").then(function(){clearInterval(timer);$("app").hidden=true;$("off").hidden=false;$("state").hidden=true;$("meta").hidden=true});
 });
 poll();timer=setInterval(poll,1000);

@@ -324,13 +324,13 @@ final class PanelWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         perms.append([
             "id": "accessibility",
             "title": "Accessibility",
-            "detail": "To move the pointer, click, type and press keys, and to see which window is in front.",
+            "detail": "Move the pointer, click and type.",
             "granted": hasPermission("accessibility"),
         ])
         perms.append([
             "id": "screen-recording",
             "title": "Screen Recording",
-            "detail": "To take screenshots so the assistant can see the screen. macOS may ask you to quit and reopen Ispyx after you allow it.",
+            "detail": "Take screenshots. macOS may ask you to reopen Ispyx.",
             "granted": hasPermission("screenRecording"),
         ])
         var state: [String: Any] = [
