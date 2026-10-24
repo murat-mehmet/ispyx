@@ -157,6 +157,17 @@ codesign "${SIGN_ARGS[@]}" --entitlements "$ENTITLEMENTS" "$APP/Contents/MacOS/I
 codesign "${SIGN_ARGS[@]}" --entitlements "$ENTITLEMENTS" "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 
+# Stapling fetches the ticket from Apple's CDN (CloudKit); a dropped connection there ("Error 68") must not fail the
+# release after notarisation already succeeded, so try a few times.
+staple() {
+  for attempt in 1 2 3 4 5; do
+    xcrun stapler staple "$1" && return 0
+    echo "    stapling failed (attempt $attempt), retrying in $((attempt * 10)) s"
+    sleep $((attempt * 10))
+  done
+  return 1
+}
+
 # ---- 4. notarisation (needs SIGN_IDENTITY and NOTARY_PROFILE) -----------------------------------
 NOTARISE=0
 if [ -n "$SIGN_IDENTITY" ] && [ -n "$NOTARY_PROFILE" ]; then NOTARISE=1; fi
@@ -169,7 +180,7 @@ if [ "$NOTARISE" = "1" ]; then
   ditto -c -k --keepParent "$APP" "$ZIP"
   xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
   rm -f "$ZIP"
-  xcrun stapler staple "$APP"
+  staple "$APP"
 else
   echo "==> skipping notarisation (set SIGN_IDENTITY and NOTARY_PROFILE to enable)"
 fi
@@ -191,7 +202,7 @@ fi
 if [ "$NOTARISE" = "1" ]; then
   echo "==> notarising the disk image"
   xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
-  xcrun stapler staple "$DMG"
+  staple "$DMG"
 fi
 
 echo
