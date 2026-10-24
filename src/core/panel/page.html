@@ -95,7 +95,7 @@ button.link:hover{background:none;color:var(--fg)}
     <div class="sub" id="meta"></div>
   </div>
 </header>
-<div id="off" hidden>Ispyx has quit.</div>
+<div id="off" hidden>Ispyx has quit. You can close this window.</div>
 <div id="app" hidden>
 
 <section id="sPerm" hidden>
@@ -253,7 +253,7 @@ function renderRecent(r,total){
 function setText(id,t){if($(id).textContent!==t)$(id).textContent=t}
 
 function render(s){
-  last=s;reachable=true;
+  last=s;reachable=true;fails=0;
   var mac=s.platform==="darwin";
   var perms=Array.isArray(s.permissions)?s.permissions:null;
   var missing=perms?perms.filter(function(p){return !p.granted}).length:0;
@@ -322,10 +322,19 @@ function render(s){
   $("end").className=mac?"pri":"danger";
 }
 
+var fails=0;
+// Ispyx quit (from the tray, or from this window): say so and close the window; if the browser refuses, the note stays.
+function showOff(){
+  clearInterval(timer);
+  $("app").hidden=true;$("off").hidden=false;$("state").hidden=true;$("meta").hidden=true;
+  var d=$("dlg");if(d.open)d.close();
+  setTimeout(function(){try{window.close()}catch(e){}},700);
+}
 function gone(){
   if(!last)setText("stateTxt","Not reachable");
   else{$("state").className="sub";setText("stateTxt","Not reachable")}
   reachable=false;
+  if(++fails>=3&&!(last&&last.platform==="darwin"))showOff(); // three misses in a row: it is gone for good
 }
 function poll(){
   Promise.resolve().then(function(){return host.getState()}).then(render,gone);
@@ -414,7 +423,7 @@ $("clearAct").addEventListener("click",function(){act("clearRecent").then(poll)}
 $("end").addEventListener("click",function(){
   if(last&&last.platform==="darwin"){act("close");return}
   if(!confirm("Quit Ispyx? AI tools lose access until it is reopened."))return;
-  act("quit").then(function(){clearInterval(timer);$("app").hidden=true;$("off").hidden=false;$("state").hidden=true;$("meta").hidden=true});
+  act("quit").then(showOff,showOff); // either way the app is going away
 });
 poll();timer=setInterval(poll,1000);
 document.addEventListener("visibilitychange",function(){if(!document.hidden)poll()});

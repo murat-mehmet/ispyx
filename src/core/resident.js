@@ -179,6 +179,16 @@ export async function startResident(ctx) {
     try { panel?.close(); } catch { /* ignore */ }
     panel = null;
   };
+  // Quitting must not leave an orphaned window behind: ask the app-style Edge window (class Chrome_WidgetWin_1,
+  // titled "Ispyx") to close. The page also tries window.close() itself when it loses the connection.
+  const closePanelWindow = () => {
+    if (w.name !== 'win32' || !w._raw?.PostMessageW) return;
+    try {
+      for (const x of w.listWindows()) {
+        if (x.title === 'Ispyx' && /^(msedge|chrome|brave)\.exe$/i.test(x.process)) w._raw.PostMessageW(x.hwnd, 0x10 /* WM_CLOSE */, 0, 0);
+      }
+    } catch { /* best effort */ }
+  };
   const openPanel = async () => {
     try {
       if (!panel) {
@@ -230,6 +240,7 @@ export async function startResident(ctx) {
       if (timer) clearInterval(timer);
       try { tray?.destroy(); } catch { /* ignore */ }
       closePanel();
+      closePanelWindow();
     },
   };
 }
