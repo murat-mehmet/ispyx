@@ -1,6 +1,6 @@
 {
   "name": "ispyx",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Local desktop-control MCP server: lets an AI use your keyboard, mouse and screen (windows, screenshots, clicks, typing, clipboard). stdio only, Windows and macOS.",
   "type": "module",
   "main": "src/server.js",
