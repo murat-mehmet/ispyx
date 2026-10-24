@@ -84,7 +84,8 @@ export function cropCapture(cap, region) {
   const w = x1 - x0;
   const h = y1 - y0;
   const bits = Buffer.alloc(w * h * 4);
-  for (let y = 0; y < h; y++) cap.bits.copy(bits, y * w * 4, ((y0 + y) * cap.width + x0) * 4, ((y0 + y) * cap.width + x1) * 4);
+  // subarray + set: cap.bits may be a plain Uint8Array (macOS), which has no Buffer.copy.
+  for (let y = 0; y < h; y++) bits.set(cap.bits.subarray(((y0 + y) * cap.width + x0) * 4, ((y0 + y) * cap.width + x1) * 4), y * w * 4);
   return { ...cap, bits, width: w, height: h, region: { x: x0, y: y0, width: w, height: h } };
 }
 

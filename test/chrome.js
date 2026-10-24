@@ -15,7 +15,7 @@ import { decodePng } from '../src/core/image.js';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'test', 'out');
 fs.mkdirSync(OUT, { recursive: true });
-const QUERY = 'Merhaba dunya hava durumu Istanbul';
+const QUERY = 'Hello world weather forecast London';
 const LOG = path.join(os.tmpdir(), `win-input-mcp-chrome-${Date.now()}.jsonl`);
 
 w.init();
@@ -99,7 +99,7 @@ try {
 
   // Consent screen: only a text check here; the test refuses to guess where to click.
   const home = await readClipboardAfter(client, hwnd, 'ctrl+a ctrl+c');
-  const consent = /Before you continue|Reject all|Tümünü reddet|Önce devam/i.test(home);
+  const consent = /Before you continue|Reject all/i.test(home);
   check('no consent screen in the way', !consent, consent ? 'consent screen shown (see test/out/chrome-google-home.png)' : '');
   if (consent) throw new Error('Google consent screen is displayed; handle it manually once or extend the test.');
 
@@ -111,10 +111,10 @@ try {
 
   // results: window title, URL, screenshot, copied page text
   const title = w.getTitle(hwnd);
-  check('window title shows the query', title.toLowerCase().includes('hava durumu'), JSON.stringify(title));
+  check('window title shows the query', title.toLowerCase().includes('weather forecast'), JSON.stringify(title));
 
   const url = await readClipboardAfter(client, hwnd, 'ctrl+l ctrl+c');
-  check('URL is a Google results page for the query', /google\.[a-z.]+\/search\?/.test(url) && /hava(\+|%20)durumu/i.test(url), url.slice(0, 120));
+  check('URL is a Google results page for the query', /google\.[a-z.]+\/search\?/.test(url) && /weather(\+|%20)forecast/i.test(url), url.slice(0, 120));
   await keys(client, hwnd, 'escape');
 
   shot = await call(client, 'screenshot_window', { hwnd, maxWidth: 1200 });
@@ -126,13 +126,13 @@ try {
   // page text: focus is in the address bar/page after the steps above; click-free focus via F6 cycling is
   // unreliable, so reload-free approach: ctrl+a on the page works once the page (not omnibox) has focus.
   let text = '';
-  for (let i = 0; i < 4 && !/results|sonuç|Sonuç|All|Tümü/.test(text); i++) {
+  for (let i = 0; i < 4 && !/results|All/.test(text); i++) {
     if (i) await keys(client, hwnd, 'f6');
     text = await readClipboardAfter(client, hwnd, 'ctrl+a ctrl+c');
   }
   fs.writeFileSync(path.join(OUT, 'chrome-results.txt'), text);
   check('copied page text is non-empty', text.length > 200, `${text.length} chars`);
-  check('copied text contains the query terms', /hava durumu/i.test(text) && /istanbul/i.test(text));
+  check('copied text contains the query terms', /weather forecast/i.test(text) && /london/i.test(text));
 
   // result titles: Google renders each title as its own short line just above a URL/breadcrumb line
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);

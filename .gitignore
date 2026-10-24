@@ -8,3 +8,5 @@ dist/
 native/macos/**/.build/
 .DS_Store
 .claude/
+native/macos/build/
+native/macos/signing.local

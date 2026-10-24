@@ -32,7 +32,7 @@ const check = (name, ok, detail = '') => {
 }
 
 {
-  const d = typingDelays('Merhaba dunya, nasilsin?');
+  const d = typingDelays('Hello world! How are you');
   check('typing delays are random within 60-200 ms (longer after spaces/punctuation)', d.length === 24 && new Set(d).size > 12 && d.every((x) => x >= 60 && x <= 200 * 1.8 + 600), `${Math.min(...d)}-${Math.max(...d)} ms`);
   const long = typingDelays('x'.repeat(2000), { capMs: 60000 });
   check('long text is sped up to fit the cap', long.reduce((a, b) => a + b, 0) <= 60500);

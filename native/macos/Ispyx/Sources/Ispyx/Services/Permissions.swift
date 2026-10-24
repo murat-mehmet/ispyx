@@ -29,6 +29,20 @@ func hasPermission(_ name: String) -> Bool {
     }
 }
 
+/// Adds Ispyx to the permission's list in System Settings (macOS lists only apps that asked) and lets macOS show
+/// its own prompt. Checking alone (AXIsProcessTrusted, CGPreflightScreenCaptureAccess) never adds the entry.
+func requestPermission(_ name: String) {
+    switch name {
+    case "accessibility":
+        let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        if AXIsProcessTrustedWithOptions(opts) { accessibilityGranted = true }
+    case "screenRecording":
+        if CGRequestScreenCaptureAccess() { screenRecordingGranted = true }
+    default:
+        break
+    }
+}
+
 /// Throws the message from PROTOCOL.md's Permissions section when `name` is missing.
 func requirePermission(_ name: String) throws {
     if hasPermission(name) { return }

@@ -2,7 +2,7 @@
 // (against an Edit control this test creates itself).
 import koffi from 'koffi';
 import w from '../src/platform/index.js';
-import { encodePng, decodePng, toRgbaScaled } from '../src/core/image.js';
+import { encodePng, decodePng, toRgbaScaled, cropCapture } from '../src/core/image.js';
 import { parseSequence, insertsContent } from '../src/platform/win32/keys.js';
 
 let failed = 0;
@@ -19,6 +19,11 @@ for (let i = 0; i < 16; i++) { bgra[i * 4] = 10; bgra[i * 4 + 1] = 20; bgra[i * 
 const small = toRgbaScaled(bgra, 4, 4, 2, 2);
 const back = decodePng(encodePng(small, 2, 2));
 check('png round trip', back.width === 2 && back.rgba[0] === 30 && back.rgba[1] === 20 && back.rgba[2] === 10 && back.rgba[3] === 255);
+// macOS hands captures over as a plain Uint8Array, not a Buffer
+const grid = new Uint8Array(4 * 4 * 4);
+for (let i = 0; i < 16; i++) grid[i * 4] = i;
+const crop = cropCapture({ bits: grid, width: 4, height: 4 }, { x: 1, y: 2, width: 2, height: 2 });
+check('crop a Uint8Array capture', crop.width === 2 && crop.height === 2 && [0, 4, 8, 12].map((o) => crop.bits[o]).join() === '9,10,13,14');
 
 // keys
 check('parse ctrl+shift+t', JSON.stringify(parseSequence('ctrl+shift+t')[0]) === JSON.stringify([0x11, 0x10, 0x54]));
@@ -95,20 +100,24 @@ check('ctrl+v counts as content insertion', insertsContent(parseSequence('ctrl+v
   fs.rmSync(file, { force: true });
 }
 
-// password detection against our own Edit controls
-const user32 = koffi.load('user32.dll');
-const CreateWindowExW = user32.func('intptr_t CreateWindowExW(uint32, str16, str16, uint32, int, int, int, int, intptr_t, intptr_t, intptr_t, intptr_t)');
-const SetFocus = user32.func('intptr_t SetFocus(intptr_t)');
-const DestroyWindow = user32.func('bool DestroyWindow(intptr_t)');
-for (const [label, style, expected] of [['plain edit', 0, false], ['ES_PASSWORD edit', 0x20, true]]) {
-  const h = CreateWindowExW(0, 'EDIT', 'x', 0x10000000 | 0x80000000 | 0x00C00000 | style, 200, 200, 300, 80, 0, 0, 0, 0); // WS_VISIBLE|WS_POPUP|WS_CAPTION
-  const ok = await w.bringToForeground(h);
-  SetFocus(h);
-  await w.sleep(200);
-  let got;
-  try { got = w.focusIsPassword(); } catch (e) { got = 'error: ' + e.message; }
-  check(`focusIsPassword: ${label}`, ok && got === expected, `foreground=${ok} got=${got}`);
-  DestroyWindow(h);
+// password detection against our own Edit controls (Windows only: the window is made with user32)
+if (process.platform === 'win32') {
+  const user32 = koffi.load('user32.dll');
+  const CreateWindowExW = user32.func('intptr_t CreateWindowExW(uint32, str16, str16, uint32, int, int, int, int, intptr_t, intptr_t, intptr_t, intptr_t)');
+  const SetFocus = user32.func('intptr_t SetFocus(intptr_t)');
+  const DestroyWindow = user32.func('bool DestroyWindow(intptr_t)');
+  for (const [label, style, expected] of [['plain edit', 0, false], ['ES_PASSWORD edit', 0x20, true]]) {
+    const h = CreateWindowExW(0, 'EDIT', 'x', 0x10000000 | 0x80000000 | 0x00C00000 | style, 200, 200, 300, 80, 0, 0, 0, 0); // WS_VISIBLE|WS_POPUP|WS_CAPTION
+    const ok = await w.bringToForeground(h);
+    SetFocus(h);
+    await w.sleep(200);
+    let got;
+    try { got = w.focusIsPassword(); } catch (e) { got = 'error: ' + e.message; }
+    check(`focusIsPassword: ${label}`, ok && got === expected, `foreground=${ok} got=${got}`);
+    DestroyWindow(h);
+  }
+} else {
+  console.log('SKIP  focusIsPassword (Windows only)');
 }
 
 console.log(failed ? `\n${failed} check(s) FAILED` : '\nUNIT TESTS PASSED');

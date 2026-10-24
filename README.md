@@ -1,3 +1,5 @@
+<p align="center"><img src="https://raw.githubusercontent.com/murat-mehmet/ispyx/master/docs/banner.png" alt="ispyx: an eye on a window, scanning it" width="100%"></p>
+
 # ispyx
 
 A local desktop-control [MCP](https://modelcontextprotocol.io) server. It lets an AI assistant use your computer the way a person does: look at the screen or at one window, move the mouse, click, drag, scroll, type, press hotkeys and use the clipboard.

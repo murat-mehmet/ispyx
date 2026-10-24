@@ -151,8 +151,8 @@ try {
   const lines = text.split(/\r?\n/).filter(Boolean);
   check('page UI mentions Instagram', /instagram/i.test(text), `${lines.length} elements`);
   check('page has a password field, a username field and a log-in button',
-    hasPw(text) && lines.some((l) => l.startsWith('Edit|False|')) && lines.some((l) => /^Button\|False\|(Log ?in|Giri[sş])/i.test(l)));
-  const cookieBanner = /cookie|çerez/i.test(text);
+    hasPw(text) && lines.some((l) => l.startsWith('Edit|False|')) && lines.some((l) => /^Button\|False\|(Log ?in)/i.test(l)));
+  const cookieBanner = /cookie/i.test(text);
   console.log(`  cookie banner text present: ${cookieBanner} (nothing was clicked or accepted)`);
 
   // scroll the Instagram page down and up (report only: the login page may fit the window)

@@ -15,7 +15,7 @@ const check = (name, ok, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  ' + detail : ''}`);
   if (!ok) failed++;
 };
-const FAST = 'Speed ğüşıöç test: the quick brown fox jumps over the lazy dog; Çalışkan öğrenci, İstanbul\'da yaşıyor. 0123456789 .,;:!? eeeeeeeeee ....... Ğ Ü Ş İ Ö Ç ok.';
+const FAST = 'Speed ğüşıöç test: the quick brown fox jumps over the lazy dog; Café déjà vu, naïve façade; Straße, smörgåsbord. 0123456789 .,;:!? eeeeeeeeee ....... Ğ Ü Ş İ Ö Ç ok.';
 const find = () => w.listWindows().find((x) => x.title === 'win-input-typing-test');
 
 for (const speed of [1, 0, 100, 0]) {

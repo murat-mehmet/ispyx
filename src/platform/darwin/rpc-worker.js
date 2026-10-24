@@ -54,7 +54,7 @@ async function connect() {
     }
     if (autostart && !launched) {
       launched = true;
-      try { spawnSync('open', ['-g', '-a', 'Ispyx'], { stdio: 'ignore', timeout: 5000 }); } catch { /* reported below */ }
+      try { spawnSync('open', ['-g', '-a', 'Ispyx', '--args', '--background'], { stdio: 'ignore', timeout: 5000 }); } catch { /* reported below */ }
     }
     if (Date.now() >= deadline) break;
     await sleep(150);

@@ -7,9 +7,9 @@
 #   SIGN_IDENTITY=... NOTARY_PROFILE=ispyx-notary ./build.sh
 #                                    signed, notarised, stapled, and packed into build/Ispyx.dmg
 #
-# The app also carries the Node core (Contents/Resources/{node,core,ispyx}), so this script must run on an
-# Apple Silicon Mac with Node 22+ (official arm64 build; override with NODE_BIN=/path/to/node) and network
-# access (npm ci fetches koffi's darwin-arm64 prebuilt).
+# The app is universal (Apple Silicon and Intel) and also carries the Node core (Contents/Resources/{node,core,ispyx}).
+# Needs Xcode (for the universal Swift build) and network access: the official Node builds (NODE_VERSION, default
+# 22.18.0) and koffi's darwin prebuilts are downloaded. Any Mac, any local Node/npm on PATH for npm's own script.
 #
 # NOTARY_PROFILE is a keychain profile created once with:
 #   xcrun notarytool store-credentials ispyx-notary --apple-id <id> --team-id <TEAMID> --password <app-specific-password>
@@ -21,13 +21,18 @@ OUT="$HERE/build"
 APP="$OUT/Ispyx.app"
 DMG="$OUT/Ispyx.dmg"
 ENTITLEMENTS="$PKG/Resources/Ispyx.entitlements"
-SIGN_IDENTITY="${SIGN_IDENTITY:-}"
-NOTARY_PROFILE="${NOTARY_PROFILE:-}"
+# signing.local (not in git) can set SIGN_IDENTITY / NOTARY_PROFILE for this Mac, e.g. an "Apple Development"
+# identity so the permissions survive rebuilds (ad-hoc builds get a new identity each time). The environment wins.
+ENV_SIGN_IDENTITY="${SIGN_IDENTITY:-}"
+ENV_NOTARY_PROFILE="${NOTARY_PROFILE:-}"
+if [ -f "$HERE/signing.local" ]; then . "$HERE/signing.local"; fi
+SIGN_IDENTITY="${ENV_SIGN_IDENTITY:-${SIGN_IDENTITY:-}}"
+NOTARY_PROFILE="${ENV_NOTARY_PROFILE:-${NOTARY_PROFILE:-}}"
 
-# ---- 1. compile (Apple Silicon, release) ------------------------------------------------------
-echo "==> swift build"
-( cd "$PKG" && swift build -c release --arch arm64 )
-BIN_DIR="$(cd "$PKG" && swift build -c release --arch arm64 --show-bin-path)"
+# ---- 1. compile (universal: Apple Silicon and Intel, release) -------------------------------------
+echo "==> swift build (arm64 + x86_64)"
+( cd "$PKG" && swift build -c release --arch arm64 --arch x86_64 )
+BIN_DIR="$(cd "$PKG" && swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
 
 # ---- 2. assemble the bundle ---------------------------------------------------------------------
 echo "==> assembling $APP"
@@ -42,47 +47,56 @@ else
   echo "    (no Resources/Ispyx.icns yet: the app gets the generic icon. Drop an .icns file there.)"
 fi
 
-# ---- 2b. bundle the Node core: Node binary, src/, production node_modules, launcher ----------------
-# Must run on an Apple Silicon Mac: koffi downloads its darwin-arm64 prebuilt during `npm ci`.
-echo "==> bundling Node and the core"
-NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
-if [ -z "$NODE_BIN" ] || [ ! -x "$NODE_BIN" ]; then
-  echo "error: no node binary found. Install Node 22+ (arm64) or set NODE_BIN=/path/to/node" >&2
-  exit 1
-fi
-NODE_BIN="$(cd "$(dirname "$NODE_BIN")" && pwd)/$(basename "$NODE_BIN")"
-case "$(file -b "$NODE_BIN")" in
-  *"Mach-O 64-bit executable arm64"*) ;;
-  *) echo "error: $NODE_BIN is not an arm64 Mach-O executable: $(file -b "$NODE_BIN")" >&2; exit 1 ;;
-esac
-NODE_MAJOR="$("$NODE_BIN" -p 'process.versions.node.split(".")[0]')"
-if [ "$NODE_MAJOR" -lt 22 ]; then
-  echo "error: $NODE_BIN is Node $NODE_MAJOR; Node 22 or newer is required" >&2
-  exit 1
-fi
-# The binary must be self-contained (the official nodejs.org build is; Homebrew's links to other dylibs).
-if otool -L "$NODE_BIN" | tail -n +2 | awk '{print $1}' | grep -v -e '^/usr/lib/' -e '^/System/' >/dev/null; then
-  echo "error: $NODE_BIN depends on libraries outside the system (Homebrew build?). Use the official arm64 build from nodejs.org, or set NODE_BIN." >&2
-  otool -L "$NODE_BIN" >&2
-  exit 1
-fi
+# ---- 2b. bundle the Node core: universal Node binary, src/, production node_modules, launcher ------
+# The official nodejs.org builds for arm64 and x64 are downloaded (checksum verified, cached in build/cache) and
+# merged with lipo, so the app runs natively on both Apple Silicon and Intel Macs.
+NODE_VERSION="${NODE_VERSION:-22.18.0}"
+CACHE="$OUT/cache"
+echo "==> bundling Node $NODE_VERSION (arm64 + x64) and the core"
+mkdir -p "$CACHE"
+SUMS="$CACHE/node-v$NODE_VERSION-SHASUMS256.txt"
+[ -f "$SUMS" ] || curl -fsSL -o "$SUMS" "https://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt"
+NODE_SLICES=()
+for arch in arm64 x64; do
+  name="node-v$NODE_VERSION-darwin-$arch"
+  if [ ! -x "$CACHE/$name/bin/node" ]; then
+    curl -fsSL -o "$CACHE/$name.tar.gz" "https://nodejs.org/dist/v$NODE_VERSION/$name.tar.gz"
+    ( cd "$CACHE" && grep " $name.tar.gz\$" "$SUMS" | shasum -a 256 -c - )
+    tar -xzf "$CACHE/$name.tar.gz" -C "$CACHE"
+    rm -f "$CACHE/$name.tar.gz"
+  fi
+  NODE_SLICES+=("$CACHE/$name/bin/node")
+done
 
 RES="$APP/Contents/Resources"
 CORE="$RES/core"
 mkdir -p "$RES/node/bin" "$CORE"
-cp -L "$NODE_BIN" "$RES/node/bin/node"
+lipo -create "${NODE_SLICES[@]}" -output "$RES/node/bin/node"
 chmod 755 "$RES/node/bin/node"
 
 REPO="$(cd "$HERE/../.." && pwd)"
 cp -R "$REPO/src" "$CORE/src"
 cp "$REPO/package.json" "$REPO/package-lock.json" "$CORE/"
+# npm runs on the bundled node (the slice native to this Mac)
 ( cd "$CORE" && PATH="$RES/node/bin:$PATH" npm ci --omit=dev --no-audit --no-fund )
 
-# keep only Mach-O libraries that run here (drop prebuilts of other systems and non-arm64 slices)
+# npm ci only installs koffi's prebuilt for the arch it runs on; add both darwin prebuilts
+KOFFI_VERSION="$("$RES/node/bin/node" -p 'require(process.argv[1]).version' "$CORE/node_modules/koffi/package.json")"
+for arch in arm64 x64; do
+  pkg="koffi-darwin-$arch"
+  dest="$CORE/node_modules/@koromix/$pkg"
+  if [ ! -d "$dest" ]; then
+    tgz="$( cd "$CACHE" && PATH="$RES/node/bin:$PATH" npm pack --silent "@koromix/$pkg@$KOFFI_VERSION" )"
+    mkdir -p "$dest"
+    tar -xzf "$CACHE/$tgz" -C "$dest" --strip-components=1
+    rm -f "$CACHE/$tgz"
+  fi
+done
+
+# keep only macOS Mach-O libraries (drop prebuilts of other systems)
 while IFS= read -r f; do
-  desc="$(file -b "$f")"
-  case "$desc" in
-    *"Mach-O"*"arm64"*) ;;
+  case "$(file -b "$f")" in
+    *"Mach-O"*) ;;
     *) rm -f "$f" ;;
   esac
 done < <(find "$CORE/node_modules" -type f \( -name '*.node' -o -name '*.dylib' -o -name '*.so' \))
@@ -93,6 +107,10 @@ chmod 755 "$RES/ispyx"
 # ---- 3. code signing ------------------------------------------------------------------------------
 # Every Mach-O is signed on its own, innermost first, then the app. With SIGN_IDENTITY the hardened runtime and a
 # secure timestamp are on (required for notarisation); without it everything is ad-hoc signed for local testing.
+# node.entitlements: V8 needs JIT and writable+executable memory; koffi's .node files are loaded with library
+# validation off because they carry a different (or ad-hoc) signature than the node binary.
+# Ispyx.entitlements: no App Sandbox (the app posts input events and captures other apps' windows); the same
+# code-signing exceptions are kept on the app. Entitlement files must not contain XML comments (AMFI rejects them).
 NODE_ENTITLEMENTS="$HERE/node.entitlements"
 if [ -n "$SIGN_IDENTITY" ]; then
   SIGN_ARGS=(--force --options runtime --timestamp --sign "$SIGN_IDENTITY")

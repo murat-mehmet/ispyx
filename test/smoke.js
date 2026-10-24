@@ -13,7 +13,7 @@ import { decodePng } from '../src/core/image.js';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'test', 'out');
 fs.mkdirSync(OUT, { recursive: true });
-const TEXT = 'Merhaba ğüşıöç';
+const TEXT = 'Hello ğüşıöç äßé';
 const LOG = path.join(os.tmpdir(), `win-input-mcp-smoke-${Date.now()}.jsonl`);
 
 w.init(); // same DPI mode as the server, so cursor readings are comparable
@@ -173,7 +173,7 @@ try {
   check('screenshot_screen', !r.isError && !!r.image);
 
   // 8b. the fastest typing (speed 0 = fixed 8 ms, speed 100) must still arrive exactly, in this fresh tab
-  const FAST = 'Speed ğüşıöç test: the quick brown fox jumps over the lazy dog; Çalışkan öğrenci, İstanbul\'da yaşıyor. 0123456789 .,;:!? eeeeeeeeee ....... Ğ Ü Ş İ Ö Ç ok.';
+  const FAST = 'Speed ğüşıöç test: the quick brown fox jumps over the lazy dog; Café déjà vu, naïve façade; Straße, smörgåsbord. 0123456789 .,;:!? eeeeeeeeee ....... Ğ Ü Ş İ Ö Ç ok.';
   for (const speed of [0, 100]) {
     await call(client, 'press_keys', { hwnd, keys: 'ctrl+a' });
     await call(client, 'press_keys', { hwnd, keys: 'delete' });

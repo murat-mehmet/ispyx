@@ -15,13 +15,13 @@ npm run auth-test      # the real password window (temp file only)
 npm run instagram-test # new Chrome window, scroll checks, Instagram login page (look only)
 ```
 
-The smoke test opens Notepad, opens a **new tab** (Notepad restores your earlier tabs, which must stay untouched), types `Merhaba ğüşıöç`, `ctrl+a`, checks the text by copying it back, takes a screenshot, verifies that `move` lands on the mapped screen pixel, drags across the text and checks the selection is a prefix of it, checks that a denylisted window is refused, empties and closes the tab and the window, then checks the kill switch with a second server instance. Screenshots are written to `test/out/`.
+The smoke test opens Notepad, opens a **new tab** (Notepad restores your earlier tabs, which must stay untouched), types `Hello ğüşıöç äßé`, `ctrl+a`, checks the text by copying it back, takes a screenshot, verifies that `move` lands on the mapped screen pixel, drags across the text and checks the selection is a prefix of it, checks that a denylisted window is refused, empties and closes the tab and the window, then checks the kill switch with a second server instance. Screenshots are written to `test/out/`.
 
 ## Chrome end-to-end test (`npm run chrome-test`)
 
-Opens Chrome the way a person does: it middle-clicks the pinned Chrome button on the taskbar (found read-only through UI Automation by `test/taskbar-button.ps1`, clicked through the server's `click` on the taskbar window). A middle-click starts a **new window** and does not focus or minimise the windows you already have open. The test then targets only that new window (the hwnd that was not there before), types `https://www.google.com/?hl=en` in the address bar, types `Merhaba dunya hava durumu Istanbul` into the search box, presses Enter, and checks:
+Opens Chrome the way a person does: it middle-clicks the pinned Chrome button on the taskbar (found read-only through UI Automation by `test/taskbar-button.ps1`, clicked through the server's `click` on the taskbar window). A middle-click starts a **new window** and does not focus or minimise the windows you already have open. The test then targets only that new window (the hwnd that was not there before), types `https://www.google.com/?hl=en` in the address bar, types `Hello world weather forecast London` into the search box, presses Enter, and checks:
 
-- window title contains the query, and the URL (read with `ctrl+l`, `ctrl+c`) is `google.*/search?q=...hava+durumu...`
+- window title contains the query, and the URL (read with `ctrl+l`, `ctrl+c`) is `google.*/search?q=...weather+forecast...`
 - a screenshot of the results window is returned (`test/out/chrome-results.png`)
 - the page text, copied with `ctrl+a`, `ctrl+c` and read back from the clipboard (no OCR), is non-empty and contains the query terms (`test/out/chrome-results.txt`)
 
