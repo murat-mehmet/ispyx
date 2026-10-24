@@ -12,6 +12,7 @@ process is started with an explicit `--resident` / `mcp` argument (used by tests
 | `ispyx --resident` | The single owner of the pipe (`ipc.listenOwner`). Runs the guard, stop hotkey, effects, tool queue, tray and panel. No stdio. A second resident finds the pipe taken and exits at once (code 0). |
 | `ispyx mcp` | Thin stdio MCP server: same tool list and schemas, every call forwarded with `callOwner`. If no resident runs it starts one first (up to 10 s). If the resident dies mid-call the call returns a tool error. Keeps a watch connection so the resident's shutdown (second stop press, tray Quit) also ends it. |
 | `ispyx quit` | Ask the resident to exit. |
+| `ispyx update` | Stop the resident, `npm install -g ispyx@latest`, start the resident again if it was running (Windows). |
 | `ispyx` without a console on stdin | Old MCP registration pointing at `src/server.js`: behaves as `mcp`. |
 
 Mode selection is `src/core/mode.js`. Start/reach helpers are `src/core/launcher.js`; resident extras are

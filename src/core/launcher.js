@@ -63,6 +63,29 @@ export async function runLauncher() {
   process.exit(0);
 }
 
+/** `ispyx update`: stops the resident (it holds files open), installs the latest package, starts it again if it ran. */
+export async function runUpdate() {
+  if (macApp() || process.platform === 'darwin') {
+    process.stderr.write('ispyx: on macOS update by installing the newest Ispyx.app from the Releases page.\n');
+    process.exit(1);
+  }
+  const pipe = pipeName();
+  const wasRunning = await residentRunning(pipe);
+  if (wasRunning) {
+    try { await callOwner(pipe, '__quit', {}); } catch { /* gone before answering */ }
+    for (let i = 0; i < 40 && await residentRunning(pipe); i++) await sleep(150);
+  }
+  const code = await new Promise((resolve) => {
+    const c = spawn('npm', ['install', '-g', 'ispyx@latest'], { stdio: 'inherit', shell: true });
+    c.on('error', () => resolve(1));
+    c.on('exit', (n) => resolve(n ?? 1));
+  });
+  if (code !== 0) process.stderr.write('ispyx: the update failed (see the npm output above).\n');
+  // Start the new copy: npm replaced the files in place, so a fresh process loads them.
+  if (wasRunning) spawnResident();
+  process.exit(code);
+}
+
 /** `ispyx quit`: asks the resident to exit; exits 0 either way. */
 export async function runQuit() {
   try { await callOwner(pipeName(), '__quit', {}); } catch { /* not running, or gone before answering */ }

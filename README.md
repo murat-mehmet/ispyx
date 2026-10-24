@@ -49,7 +49,7 @@ On macOS use `/Applications/Ispyx.app/Contents/Resources/ispyx` as the command, 
 ## Using it
 
 - **Panel.** Permissions (macOS), recent activity, effects, password, denylist, start at login, the connect command. Opens in its own small window and closes when you close it.
-- **Commands (Windows).** `ispyx` starts the resident app and opens the panel, `ispyx mcp` is the stdio server for an AI app, `ispyx quit` stops it (update with `npm i -g ispyx`). Errors go to `%APPDATA%\ispyx\ispyx.log`. Details: [src/core/RESIDENT.md](src/core/RESIDENT.md).
+- **Commands (Windows).** `ispyx` starts the resident app and opens the panel, `ispyx mcp` is the stdio server for an AI app, `ispyx quit` stops it, `ispyx update` installs the latest version and restarts it. Errors go to `%APPDATA%\ispyx\ispyx.log`. Details: [src/core/RESIDENT.md](src/core/RESIDENT.md).
 - **Stop.** **Alt+Esc** (Option+Esc on macOS): one press cancels everything running, a second press within 5 s shuts the server down.
 - **Feedback.** A banner shows while a tool runs (green working, amber cancelled, red stopped). An eye and a scan line show on screenshots, clicks, scrolls and typing get small animations. All of it is click-through and can be turned off in the panel.
 

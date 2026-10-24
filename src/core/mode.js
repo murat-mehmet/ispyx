@@ -11,6 +11,7 @@ export function resolveMode(argv = process.argv.slice(2), env = process.env, pla
   if (argv.includes('--resident')) return 'resident';
   if (argv.includes('mcp')) return 'mcp';
   if (argv.includes('quit') || argv.includes('--quit')) return 'quit';
+  if (argv.includes('update')) return 'update';
   const target = env.ISPYX_PLATFORM || platform;
   if (target === 'win32') return isTTY ? 'launcher' : 'mcp';
   return 'classic';
