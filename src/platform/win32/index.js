@@ -27,3 +27,5 @@ export const dataDir = () => {
   return dir;
 };
 export { Layer, textMask } from './layer.js';
+export { Tray } from './tray.js';
+export { autostart } from './autostart.js';
