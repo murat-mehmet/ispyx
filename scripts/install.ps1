@@ -11,7 +11,9 @@
 #   -NoAutostart   do not enable "start at login"
 #   -NoStart       do not start ispyx at the end
 #   -DryRun        only print what would be done, change nothing
+#   -Package       what npm installs (default "ispyx"); a .tgz from `npm pack` tests an install before publishing
 param(
+    [string]$Package = 'ispyx',
     [switch]$Uninstall,
     [switch]$Purge,
     [switch]$NoAutostart,
@@ -36,6 +38,14 @@ $ShortcutName = 'Ispyx.lnk'
 function Say([string]$m)  { Write-Host $m }
 function Step([string]$m) { Write-Host ''; Write-Host ('==> ' + $m) -ForegroundColor Cyan }
 function Plan([string]$m) { Write-Host ('    [dry-run] would: ' + $m) -ForegroundColor Yellow }
+
+# Windows PowerShell 5.1 turns anything a program writes to stderr (npm warnings!) into a terminating error under
+# $ErrorActionPreference = 'Stop'. Run programs through this and check $LASTEXITCODE afterwards.
+function Run-Native([scriptblock]$cmd) {
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $cmd 2>&1 | ForEach-Object { Write-Host ('    ' + $_) } } finally { $ErrorActionPreference = $old }
+}
 
 function Get-DesktopShortcutPath {
     return (Join-Path ([Environment]::GetFolderPath('Desktop')) $ShortcutName)
@@ -96,7 +106,7 @@ function Install-NodeWithWinget {
         return $false
     }
     if ($DryRun) { Plan 'winget install --id OpenJS.NodeJS.LTS -e --scope user'; return $true }
-    & winget install --id OpenJS.NodeJS.LTS -e --scope user --silent --accept-package-agreements --accept-source-agreements
+    Run-Native { winget install --id OpenJS.NodeJS.LTS -e --scope user --silent --accept-package-agreements --accept-source-agreements }
     if ($LASTEXITCODE -ne 0) { Say '    winget did not succeed, will use the portable download instead.'; return $false }
     return $true
 }
@@ -170,7 +180,7 @@ if ($Uninstall) {
         $portableNpm = Test-Path -LiteralPath (Join-Path $NpmPrefix 'node_modules\ispyx')
         if ($DryRun) { Plan ('npm uninstall -g ispyx' + $(if ($portableNpm) { ' --prefix ' + $NpmPrefix } else { '' })) }
         else {
-            if ($portableNpm) { & $npm uninstall -g ispyx --prefix $NpmPrefix } else { & $npm uninstall -g ispyx }
+            if ($portableNpm) { Run-Native { & $npm uninstall -g ispyx --prefix $NpmPrefix } } else { Run-Native { & $npm uninstall -g ispyx } }
             Say '    Removed the ispyx npm package.'
         }
     } else { Say '    npm not found, skipping package removal.' }
@@ -222,22 +232,22 @@ Step 'Step 2 of 5: installing the ispyx package'
 if ($portable) {
     if ($DryRun) {
         Plan ('npm config set prefix ' + $NpmPrefix)
-        Plan ('npm install -g ispyx --prefix ' + $NpmPrefix)
+        Plan ('npm install -g ' + $Package + ' --prefix ' + $NpmPrefix)
         Plan ('add ' + $NpmPrefix + ' to your user PATH')
     } else {
         New-Item -ItemType Directory -Path $NpmPrefix -Force | Out-Null
-        & $npm config set prefix $NpmPrefix
+        Run-Native { & $npm config set prefix $NpmPrefix }
         if ($LASTEXITCODE -ne 0) { throw 'npm config failed.' }
         $env:Path = $nodeDir + ';' + $env:Path
-        & $npm install -g ispyx --prefix $NpmPrefix
+        Run-Native { & $npm install -g $Package --prefix $NpmPrefix }
         if ($LASTEXITCODE -ne 0) { throw 'npm install failed.' }
         Add-UserPath $NpmPrefix
     }
     $binDir = $NpmPrefix
 } else {
-    if ($DryRun) { Plan 'npm install -g ispyx' }
+    if ($DryRun) { Plan ('npm install -g ' + $Package) }
     else {
-        & $npm install -g ispyx
+        Run-Native { & $npm install -g $Package }
         if ($LASTEXITCODE -ne 0) { throw 'npm install failed.' }
     }
     $binDir = $null
