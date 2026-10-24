@@ -1,4 +1,4 @@
-<p align="center"><img src="https://raw.githubusercontent.com/murat-mehmet/ispyx/master/docs/banner.png" alt="ispyx: an eye on a window, scanning it" width="100%"></p>
+<p align="center"><img src="docs/banner.png" alt="ispyx: an eye on a window, scanning it" width="100%"></p>
 
 # ispyx
 
