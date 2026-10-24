@@ -7,6 +7,7 @@ let package = Package(
     targets: [
         // One executable target. Sources/Ispyx/App: app shell, socket server, UI (overlay, dialog, layers).
         // Sources/Ispyx/Services: the platform functions (input, windows, capture, pasteboard, hotkey).
-        .executableTarget(name: "Ispyx", path: "Sources/Ispyx"),
+        .executableTarget(name: "Ispyx", path: "Sources/Ispyx",
+                          linkerSettings: [.linkedFramework("WebKit")]),
     ]
 )
