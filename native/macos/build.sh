@@ -157,15 +157,18 @@ codesign "${SIGN_ARGS[@]}" --entitlements "$ENTITLEMENTS" "$APP/Contents/MacOS/I
 codesign "${SIGN_ARGS[@]}" --entitlements "$ENTITLEMENTS" "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 
-# Stapling fetches the ticket from Apple's CDN (CloudKit); a dropped connection there ("Error 68") must not fail the
-# release after notarisation already succeeded, so try a few times.
+# Stapling fetches the ticket from Apple's CDN (CloudKit) and puts it into the app, so Gatekeeper can check it
+# offline. It is optional: once notarisation is accepted Gatekeeper finds the ticket online too. The CDN often drops
+# connections from CI runners ("Error 68"), so try a few times, then go on without it (warning) instead of failing a
+# release that is notarised.
 staple() {
   for attempt in 1 2 3 4 5; do
     xcrun stapler staple "$1" && return 0
-    echo "    stapling failed (attempt $attempt), retrying in $((attempt * 10)) s"
-    sleep $((attempt * 10))
+    echo "    stapling failed (attempt $attempt), retrying in $((attempt * 15)) s"
+    sleep $((attempt * 15))
   done
-  return 1
+  echo "::warning::Could not staple $(basename "$1") (Apple's CDN). It is notarised; Gatekeeper checks it online."
+  return 0
 }
 
 # ---- 4. notarisation (needs SIGN_IDENTITY and NOTARY_PROFILE) -----------------------------------
