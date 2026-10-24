@@ -216,5 +216,5 @@ if [ -z "$CURRENT" ]; then
   say "  claude mcp add ispyx --scope user -- \"$DEST/Contents/Resources/ispyx\""
   say "The Ispyx window shows this and the Claude Desktop entry with Copy buttons."
 else
-  say "Updated from $CURRENT. AI apps reconnect on their next ispyx call (Claude Code: /mcp)."
+  say "Updated from $CURRENT. Connected AI apps stay connected and use the new version from their next call."
 fi
