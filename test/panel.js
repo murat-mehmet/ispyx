@@ -10,6 +10,8 @@ const actions = {
   quit: () => calls.push(['quit']), setAutostart: (v) => calls.push(['setAutostart', v]),
   setEffects: (v) => calls.push(['setEffects', v]), openLog: () => calls.push(['openLog']),
   changePassword: () => calls.push(['changePassword']),
+  copy: (v) => calls.push(['copy', v]), requestPermission: (v) => calls.push(['requestPermission', v]),
+  openPermissionSettings: (v) => calls.push(['openPermissionSettings', v]),
 };
 const panel = await startPanel({ getState: () => state, actions });
 const port = new URL(panel.url).port;
@@ -37,6 +39,14 @@ assert.equal((await req('GET', '/api/state', { headers: H, host: 'evil.com:' + p
 assert.equal((await req('GET', '/api/state', { headers: H, host: 'localhost:' + port })).status, 200, 'localhost host ok');
 const page = await req('GET', '/', { headers: H });
 assert.equal(page.status, 200); assert.match(page.body, /Ispyx/);
+// the page uses relative urls only and no external hosts (it also runs from file/WKWebView without a server)
+assert.ok(!/(src|href)\s*=\s*["']\//.test(page.body), 'no root-absolute src/href');
+assert.ok(!/fetch\(\s*["']\//.test(page.body), 'no root-absolute fetch');
+assert.ok(!/https?:\/\/|\/\/[a-z0-9.-]+\.[a-z]{2,}/i.test(page.body), 'no external hosts');
+assert.match(page.body, /<img src="icon\.png"/); assert.match(page.body, /<link rel="icon" href="icon\.png"/);
+assert.match(page.body, /"api\/state"/); assert.match(page.body, /"api\/action"/);
+const icon = await req('GET', '/icon.png', { headers: H });
+assert.equal(icon.status, 200); assert.equal(icon.headers['content-type'], 'image/png');
 assert.equal(page.headers['cache-control'], 'no-store');
 assert.match(page.headers['content-security-policy'], /default-src 'self'/);
 assert.equal(page.headers['access-control-allow-origin'], undefined);
@@ -64,6 +74,14 @@ assert.equal((await post({ name: 'setEffects', value: false })).status, 200);
 assert.equal((await post({ name: 'setAutostart', value: true })).status, 200);
 assert.equal((await post({ name: 'openLog' })).status, 200);
 assert.deepEqual(calls, [['setEffects', false], ['setAutostart', true], ['openLog']]);
+assert.equal((await post({ name: 'copy', value: 'hello' })).status, 200);
+assert.equal((await post({ name: 'copy', value: 5 })).status, 400, 'copy needs a string');
+assert.equal((await post({ name: 'requestPermission', value: 'accessibility' })).status, 200);
+assert.equal((await post({ name: 'openPermissionSettings', value: 'screen-recording' })).status, 200);
+assert.equal((await post({ name: 'openPermissionSettings', value: '../x' })).status, 400, 'unknown permission');
+assert.equal((await post({ name: 'close' })).status, 200, 'close is a no-op');
+assert.equal((await post({ name: 'showConfigFile' })).status, 400, 'host does not define it');
+assert.deepEqual(calls.slice(3), [['copy', 'hello'], ['requestPermission', 'accessibility'], ['openPermissionSettings', 'screen-recording']]);
 assert.equal((await post({ name: 'quit' })).status, 200);
 await new Promise((r) => setTimeout(r, 150));
 assert.deepEqual(calls.at(-1), ['quit']);

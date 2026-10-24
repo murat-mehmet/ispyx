@@ -11,8 +11,8 @@
 //   ./panel/index.js     startPanel({ getState, actions }) -> { url, close() }   (local web panel)
 //
 //   getState() -> { version, platform, pid, uptimeMs, clients, recent: [{ time, tool, summary }],
-//                   stopLabel, effectsEnabled, passwordSet, denylist, autostart }
-//   actions    -> { quit(), setAutostart(bool), setEffects(bool), clearRecent() }
+//                   stopLabel, effectsEnabled, passwordSet, denylist, autostart, connect (win32) }
+//   actions    -> { quit(), setAutostart(bool), setEffects(bool), clearRecent(), showConfigFile() }
 //
 // Control calls over the pipe (names start with "__", handled here, never reach the tools):
 //   __ping -> 'pong'      __panel -> panel url ('' if none)      __quit -> 'bye' and the resident shuts down.
@@ -66,6 +66,27 @@ export function setupLogging(dir) {
   return { file, write };
 }
 
+/** Windows: how to connect an AI app (shown in the panel). Claude Desktop reads %APPDATA%\Claude\claude_desktop_config.json. */
+function connectInfo() {
+  const appData = process.env.APPDATA || path.join(process.env.USERPROFILE || '', 'AppData', 'Roaming');
+  return {
+    claudeCodeCommand: 'claude mcp add ispyx --scope user -- ispyx mcp',
+    desktopConfigJson: JSON.stringify({ mcpServers: { ispyx: { command: 'ispyx', args: ['mcp'] } } }, null, 2),
+    desktopConfigPath: path.join(appData, 'Claude', 'claude_desktop_config.json'),
+  };
+}
+
+/** Explorer with the file selected, or its folder when the file is not there yet. */
+function revealFile(file) {
+  const exists = (f) => { try { return fs.existsSync(f); } catch { return false; } };
+  const args = exists(file) ? [`/select,${file}`] : exists(path.dirname(file)) ? [path.dirname(file)] : null;
+  if (!args) return false;
+  const c = spawn('explorer.exe', args, { stdio: 'ignore', detached: true });
+  c.on('error', () => {});
+  c.unref();
+  return true;
+}
+
 const PANEL_IDLE_MS = 120000; // the open page polls every second (a hidden window is throttled to ~1/min); longer than that: gone
 
 /** Shows the panel as an app-style window (no tabs or address bar) when Edge is there, else in the default browser. */
@@ -102,12 +123,15 @@ export async function startResident(ctx) {
     passwordSet: safe(() => !!auth.read().hash, false),
     denylist: config.denylist.slice(),
     autostart: safe(() => !!autostart?.get(), false),
+    ...(w.name === 'win32' ? { connect: connectInfo() } : {}),
   });
   const actions = {
     quit: () => shutdown(),
     setAutostart: (on) => { autostart?.set(!!on); return safe(() => !!autostart?.get(), false); },
     setEffects: (on) => { scan.enabled = !!on; config.animations = !!on; return !!on; },
     clearRecent: () => { recent.length = 0; },
+    showConfigFile: () => revealFile(connectInfo().desktopConfigPath),
+    openLog: () => { if (log?.file) { const c = spawn('notepad.exe', [log.file], { stdio: 'ignore', detached: true }); c.on('error', () => {}); c.unref(); } },
   };
 
   // The panel (a loopback web page) exists only while its window is open: started on "Open", closed when the page

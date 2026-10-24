@@ -7,8 +7,11 @@ import { fileURLToPath } from 'node:url';
 
 const PAGE = fileURLToPath(new URL('./page.html', import.meta.url));
 const COOKIE = 'ispyx_panel';
-const ACTIONS = ['quit', 'setAutostart', 'setEffects', 'openLog'];
+// Explicit whitelist; an action is also callable only if the host's `actions` object defines it.
+const ACTIONS = ['quit', 'setAutostart', 'setEffects', 'openLog', 'copy', 'close', 'requestPermission', 'openPermissionSettings', 'showConfigFile'];
 const BOOL_ACTIONS = new Set(['setAutostart', 'setEffects']);
+const STRING_ACTIONS = new Set(['copy', 'requestPermission', 'openPermissionSettings']); // value must be a short string
+const PERMISSION_IDS = new Set(['accessibility', 'screen-recording']);
 
 function safeEq(a, b) {
   const x = Buffer.from(String(a)), y = Buffer.from(String(b));
@@ -91,17 +94,20 @@ export async function startPanel({ getState, actions, port = 0 }) {
         let body;
         try { body = await readJson(req); } catch { return deny(res, 400, 'bad json'); }
         const name = body && body.name;
-        if (typeof name !== 'string' || !ACTIONS.includes(name) || typeof actions?.[name] !== 'function') {
+        if (typeof name !== 'string' || !ACTIONS.includes(name) || (name !== 'close' && typeof actions?.[name] !== 'function')) {
           return deny(res, 400, 'unknown action');
         }
         if (BOOL_ACTIONS.has(name) && typeof body.value !== 'boolean') return deny(res, 400, 'boolean value required');
+        if (STRING_ACTIONS.has(name) && (typeof body.value !== 'string' || body.value.length > 3000)) return deny(res, 400, 'string value required');
+        if ((name === 'requestPermission' || name === 'openPermissionSettings') && !PERMISSION_IDS.has(body.value)) return deny(res, 400, 'unknown permission');
+        if (name === 'close') return send(res, 200, { ok: true }); // macOS-only; nothing to close here
         // Reply first for quit, since it may tear this server down.
         if (name === 'quit') {
           send(res, 200, { ok: true });
           setTimeout(() => { Promise.resolve().then(() => actions.quit()).catch(() => {}); }, 50);
           return;
         }
-        await actions[name](BOOL_ACTIONS.has(name) ? body.value : undefined);
+        await actions[name](BOOL_ACTIONS.has(name) || STRING_ACTIONS.has(name) ? body.value : undefined);
         return send(res, 200, { ok: true });
       }
       return deny(res, 404, 'not found');
