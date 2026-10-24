@@ -58,12 +58,14 @@ app_version() { /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$
 # the app bundle of the running Ispyx, if any (from its executable's path)
 running_app() { ps -axo args= | awk '$1 ~ /\/Ispyx\.app\/Contents\/MacOS\/Ispyx$/ { sub(/\/Contents\/MacOS\/Ispyx$/, "", $1); print $1; exit }'; }
 
-# Quits the Ispyx that runs from $1 (which also ends its resident server and every AI app's ispyx connection).
-# Another copy that runs elsewhere (a build folder) is left alone.
+# Quits the running Ispyx (which also ends its resident server and every AI app's ispyx connection), also a copy that
+# runs from elsewhere than $1 (opened from Downloads): two copies of one app cannot run side by side, and opening
+# the new one would only bring the old one to the front. Tests (ISPYX_APP_DIR) leave other copies alone.
 quit_app() {
   r="$(running_app)"
   [ -n "$r" ] || return 0
-  if [ "$r" != "$1" ]; then say "    Another Ispyx runs from $r; leaving it running."; return 0; fi
+  if [ "$r" != "$1" ] && [ -n "${ISPYX_APP_DIR:-}" ]; then say "    Another Ispyx runs from $r; leaving it running."; return 0; fi
+  [ "$r" != "$1" ] && say "    Ispyx runs from $r; it is replaced by $1"
   say "    Quitting Ispyx"
   [ "$DRY" = 1 ] && return 0
   osascript -e "quit app id \"$BUNDLE_ID\"" >/dev/null 2>&1 || true
@@ -127,7 +129,8 @@ else
   step "Downloading Ispyx $LATEST"
   BASE="https://github.com/$REPO/releases/download/$TAG"
   DMG="$TMP/Ispyx-$LATEST.dmg"
-  run curl -fL --progress-bar -o "$DMG" "$BASE/Ispyx-$LATEST.dmg"
+  if [ -t 2 ]; then PROGRESS="--progress-bar"; else PROGRESS="-sS"; fi # no progress bar in update.log
+  run curl -fL $PROGRESS -o "$DMG" "$BASE/Ispyx-$LATEST.dmg"
   run curl -fsSL -o "$TMP/sum" "$BASE/Ispyx-$LATEST.dmg.sha256"
   if [ "$DRY" = 0 ]; then
     want="$(awk '{print $1}' "$TMP/sum")"

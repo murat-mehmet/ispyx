@@ -429,9 +429,12 @@ $("showAll").addEventListener("click",function(){expanded=!expanded;if(last&&las
 $("clearAct").addEventListener("click",function(){act("clearRecent").then(poll)});
 // the update quits and restarts ispyx: this window then reports it has quit (macOS opens it again)
 var updating=false;
+function updateFailed(msg){updating=false;$("updBtn").disabled=false;setText("updTxt",msg)}
 $("updBtn").addEventListener("click",function(){
   updating=true;$("updBtn").disabled=true;setText("updTxt","Updating, ispyx restarts in a moment…");
-  act("update").catch(function(err){updating=false;$("updBtn").disabled=false;setText("updTxt",err.message)});
+  act("update").catch(function(err){updateFailed(err.message)});
+  // a successful update quits this ispyx; still here after two minutes means it did not go through
+  setTimeout(function(){if(updating)updateFailed("The update did not finish. Details: update.log in the ispyx data folder.")},120000);
 });
 $("end").addEventListener("click",function(){
   if(last&&last.platform==="darwin"){act("close");return}
