@@ -1,7 +1,7 @@
 name: Release
 
 # Push a tag that matches package.json, e.g. `npm version 1.1.0 && git push --follow-tags`:
-#   - npm: the package Windows users run with `npx -y ispyx` (needs the NPM_TOKEN secret)
+#   - npm: the package Windows users run with `npx -y ispyx` (trusted publishing, no token)
 #   - macOS: Ispyx-<version>.dmg, signed and notarised when the Apple secrets are set (see docs/releasing.md)
 #   - a GitHub release with the DMG, the npm tarball and the Windows installer script
 on:
@@ -103,15 +103,21 @@ jobs:
   npm:
     needs: check
     runs-on: ubuntu-latest
+    # npm trusted publishing: the registry trusts this workflow of this repository (set up on npmjs.com, package
+    # settings), so there is no token; the OIDC id token also yields a provenance statement
+    permissions:
+      contents: read
+      id-token: write
     env:
       VERSION: ${{ needs.check.outputs.version }}
-      HAS_NPM: ${{ secrets.NPM_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+      - name: npm with trusted publishing (11.5.1 or later)
+        run: npm install -g npm@latest
       - run: npm ci
       - name: Pack
         run: npm pack
@@ -121,15 +127,9 @@ jobs:
           path: ispyx-${{ env.VERSION }}.tgz
           if-no-files-found: error
       - name: Publish to npm
-        if: env.HAS_NPM == 'true'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TAG: ${{ needs.check.outputs.prerelease == 'true' && 'next' || 'latest' }}
         run: npm publish "ispyx-$VERSION.tgz" --access public --tag "$TAG"
-      - name: No npm token
-        if: env.HAS_NPM != 'true'
-        run: |
-          echo "::warning::No NPM_TOKEN secret: the package was packed but not published."
 
   release:
     needs: [check, macos, npm]

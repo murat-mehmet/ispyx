@@ -16,13 +16,15 @@ git push --follow-tags
 
 ## Secrets
 
-Settings > Secrets and variables > Actions > New repository secret. Without them the workflow still runs: the
-package is packed but not published, and the DMG is ad-hoc signed (Gatekeeper blocks it until the user allows it,
+npm needs no secret: the package uses npm trusted publishing (npmjs.com > ispyx > Settings > Trusted Publisher:
+GitHub Actions, `murat-mehmet/ispyx`, workflow `release.yml`, npm publish allowed), so the workflow publishes with
+its OIDC identity and npm adds a provenance statement.
+
+The macOS secrets are under Settings > Secrets and variables > Actions. Without them the DMG is ad-hoc signed (Gatekeeper blocks it until the user allows it,
 and macOS asks for the permissions again after every update).
 
 | Secret | What it is |
 | --- | --- |
-| `NPM_TOKEN` | npmjs.com > Access Tokens > Generate New Token, type **Automation** (or a granular token with publish rights for `ispyx`). |
 | `MACOS_CERTIFICATE_P12` | The **Developer ID Application** certificate with its private key, exported as `.p12` and base64 encoded (below). |
 | `MACOS_CERTIFICATE_PASSWORD` | The password chosen when exporting the `.p12`. |
 | `APPLE_ID` | The Apple ID email of the developer account (notarisation). |
