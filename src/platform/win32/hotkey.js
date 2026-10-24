@@ -62,8 +62,8 @@ export function installStopHotkey(onStop, lingerMs = HOOK_LINGER_MS) {
   };
   return {
     touch() {
+      ensurePump(lingerMs + 2000); // the hook must be serviced quickly or the user's own typing lags
       if (!hook) {
-        ensurePump();
         hook = SetWindowsHookExW(13, proc, 0, 0); // WH_KEYBOARD_LL
         if (!hook) process.stderr.write('ispyx: stop hotkey hook not installed; using polling only\n');
       }

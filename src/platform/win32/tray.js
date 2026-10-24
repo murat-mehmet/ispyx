@@ -147,7 +147,7 @@ export class Tray {
     if (!this.hwnd) throw new Error('CreateWindowEx failed');
     this.icon = createEyeIcon();
     trays.set(this.hwnd, this);
-    ensurePump();
+    ensurePump(0); // the icon is happy with the idle pace
     this._add();
   }
 
