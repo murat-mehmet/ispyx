@@ -36,7 +36,8 @@
     "ipc-test": "node test/core/ipc-unix.js",
     "resident-test": "node test/core/resident-fake.js",
     "darwin-test": "node test/darwin/client.js",
-    "tray-test": "node test/win32-tray.js"
+    "tray-test": "node test/win32-tray.js",
+    "panel-test": "node test/panel.js"
   },
   "license": "MIT",
   "dependencies": {

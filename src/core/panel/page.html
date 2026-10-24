@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ispyx</title>
+<style>
+:root{--bg:#f4f6f5;--card:#fff;--fg:#17201b;--mute:#6b7871;--line:#e1e7e3;--acc:#2fd16b;--danger:#e5484d}
+@media (prefers-color-scheme:dark){:root{--bg:#101412;--card:#181e1b;--fg:#e8eeea;--mute:#8a978f;--line:#2a332e}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,"Segoe UI",sans-serif}
+main{max-width:560px;margin:0 auto;padding:20px 16px 40px}
+header{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+header svg{width:40px;height:40px;flex:none}
+h1{font-size:20px;margin:0}
+.ver{color:var(--mute);font-size:13px}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 16px;margin-bottom:14px}
+h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);margin:14px 0 4px;font-weight:600}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row .v{color:var(--mute);text-align:right;overflow-wrap:anywhere}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--mute);margin-right:6px}
+.on .dot{background:var(--acc);box-shadow:0 0 0 3px rgba(47,209,107,.25)}
+kbd{font:inherit;font-size:13px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:1px 7px}
+.sw{position:relative;width:44px;height:26px;flex:none}
+.sw input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer;z-index:1}
+.sw i{position:absolute;inset:0;border-radius:13px;background:var(--line);transition:.15s}
+.sw i::after{content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.15s}
+.sw input:checked+i{background:var(--acc)}
+.sw input:checked+i::after{transform:translateX(18px)}
+.sw input:focus-visible+i{outline:2px solid var(--acc);outline-offset:2px}
+.tags{display:flex;flex-wrap:wrap;gap:6px;padding:10px 0}
+.tags span{background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:13px}
+ul{list-style:none;margin:0;padding:0}
+li{padding:8px 0;border-bottom:1px solid var(--line);display:flex;gap:10px}
+li:last-child{border-bottom:0}
+li .t{color:var(--mute);font-size:12px;flex:none;width:64px;padding-top:2px}
+li .tool{font-weight:600}
+li .s{color:var(--mute);overflow-wrap:anywhere}
+.empty{color:var(--mute);padding:12px 0}
+button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);padding:8px 14px}
+button.link{border:0;background:none;color:var(--mute);padding:0;text-decoration:underline}
+button.danger{background:var(--danger);border-color:var(--danger);color:#fff}
+.actions{display:flex;gap:10px;justify-content:space-between;align-items:center;margin-top:6px}
+#off{display:none;text-align:center;color:var(--mute);padding:30px 0}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="12" fill="#17201b"/><path d="M6 24c4.5-8 10.500-12 18-12s13.500 4 18 12c-4.500 8-10.500 12-18 12S10.500 32 6 24z" fill="none" stroke="#2fd16b" stroke-width="2.500" stroke-linejoin="round"/><circle cx="24" cy="24" r="7" fill="#2fd16b"/><circle cx="24" cy="24" r="3" fill="#17201b"/></svg>
+  <div><h1>Ispyx</h1><div class="ver" id="ver"></div></div>
+</header>
+<div id="off">Ispyx has quit. You can close this tab.</div>
+<div id="app">
+<section>
+  <h2>Status</h2>
+  <div class="row" id="run"><span><span class="dot"></span><span id="runTxt">Connecting</span></span><span class="v" id="up"></span></div>
+  <div class="row"><span>Process ID</span><span class="v" id="pid"></span></div>
+  <div class="row"><span>Connected MCP clients</span><span class="v" id="clients"></span></div>
+  <div class="row"><span>Emergency stop</span><span class="v"><kbd id="stop"></kbd></span></div>
+</section>
+<section>
+  <h2>Settings</h2>
+  <div class="row"><label for="auto" id="autoLbl">Open at Windows start</label><span class="sw"><input type="checkbox" id="auto"><i></i></span></div>
+  <div class="row"><label for="fx">Effects</label><span class="sw"><input type="checkbox" id="fx"><i></i></span></div>
+</section>
+<section>
+  <h2>Safety</h2>
+  <div class="row"><span>Password set</span><span class="v" id="pw"></span></div>
+  <div class="row" style="display:block"><span>Never touched (denylist)</span><div class="tags" id="deny"></div></div>
+</section>
+<section>
+  <h2>Recent activity</h2>
+  <ul id="recent"></ul>
+</section>
+<div class="actions"><button class="link" id="log">Open log</button><button class="danger" id="quit">Quit Ispyx</button></div>
+</div>
+</main>
+<script>
+(function(){
+var $=function(i){return document.getElementById(i)};
+var busy={};
+function fmt(ms){var s=Math.floor(ms/1000),d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);
+  return d?d+"d "+h+"h":h?h+"h "+m+"m":m?m+"m "+(s%60)+"s":s+"s"}
+function esc(t){var e=document.createElement("div");e.textContent=t==null?"":String(t);return e.innerHTML}
+function post(name,value){
+  return fetch("/api/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name,value:value})});
+}
+function render(s){
+  $("ver").textContent="v"+s.version+(s.platform?" - "+s.platform:"");
+  $("run").className="row on";$("runTxt").textContent="Running";
+  $("up").textContent="up "+fmt(s.uptimeMs||0);
+  $("pid").textContent=s.pid;
+  $("clients").textContent=s.clients;
+  $("stop").textContent=s.stopLabel||"";
+  if(!busy.auto)$("auto").checked=!!s.autostart;
+  if(!busy.fx)$("fx").checked=!!s.effectsEnabled;
+  $("autoLbl").textContent=s.platform==="darwin"?"Open at login":"Open at Windows start";
+  $("pw").textContent=s.passwordSet?"Yes":"No";
+  var d=s.denylist||[];
+  $("deny").innerHTML=d.length?d.map(function(x){return "<span>"+esc(x)+"</span>"}).join(""):'<span class="v">none</span>';
+  var r=s.recent||[];
+  $("recent").innerHTML=r.length?r.map(function(x){
+    var t=x.time?new Date(x.time).toLocaleTimeString():"";
+    return '<li><span class="t">'+esc(t)+'</span><span><span class="tool">'+esc(x.tool)+'</span><br><span class="s">'+esc(x.summary)+'</span></span></li>';
+  }).join(""):'<li class="empty">Nothing yet.</li>';
+}
+function gone(){$("run").className="row";$("runTxt").textContent="Not reachable"}
+function poll(){
+  fetch("/api/state",{cache:"no-store"}).then(function(r){if(!r.ok)throw 0;return r.json()}).then(render).catch(gone);
+}
+function toggle(id,key,name){
+  $(id).addEventListener("change",function(){
+    busy[key]=true;var v=$(id).checked;
+    post(name,v).then(function(r){if(!r.ok)$(id).checked=!v}).catch(function(){$(id).checked=!v})
+      .then(function(){busy[key]=false;poll()});
+  });
+}
+toggle("auto","auto","setAutostart");toggle("fx","fx","setEffects");
+$("log").addEventListener("click",function(){post("openLog")});
+$("quit").addEventListener("click",function(){
+  if(!confirm("Quit Ispyx? AI tools will lose control of this computer until it is opened again."))return;
+  post("quit").then(function(){clearInterval(timer);$("app").style.display="none";$("off").style.display="block"});
+});
+poll();var timer=setInterval(poll,1000);
+})();
+</script>
+</body>
+</html>
