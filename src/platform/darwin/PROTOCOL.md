@@ -7,14 +7,21 @@ contract it implements is `../CONTRACT.md`.
 ## Process model
 
 ```
-Claude / MCP client --stdio--> `ispyx mcp` (Node core, one per client)
-                                   |  (core's own owner/proxy election, src/core/ipc.js, unchanged)
+Claude / MCP client --stdio--> `ispyx mcp` (Contents/Resources/ispyx: thin forwarder, one per client)
+                                   |  ispyx.sock (src/core/ipc.js pipe, pinned by macos-entry.js)
                                    v
-                              owner Node core --unix socket--> Ispyx.app (Swift, the only process that touches the OS)
+              resident Node core (`--resident`, started and watched by Ispyx.app) --helper.sock--> Ispyx.app (Swift,
+                                                                               the only process that touches the OS)
 ```
 
-- Ispyx.app runs once per user (menu-bar agent, `LSUIElement`). `ispyx mcp` starts it if it is not running
-  (`open -g -a Ispyx`) and waits for the socket.
+- Ispyx.app runs once per user (menu-bar agent, `LSUIElement`). At launch it starts the bundled Node core as the
+  resident (`ResidentService.swift`), the one process that does the work (like the tray app on Windows, see
+  `src/core/RESIDENT.md`), and starts it again if it dies. The panel's activity and settings come from it, so they
+  work without any AI app connected.
+- `ispyx mcp` forwards every call to the resident; when none answers it opens the app (`open -g <the app>`), which
+  starts one, and waits.
+- Quitting the app stops the resident with SIGTERM, which tells the forwarders to exit first. A resident whose app is
+  gone (`ISPYX_APP_PID`) leaves by itself and never opens the app again.
 - Socket: `~/Library/Application Support/Ispyx/helper.sock` (unix domain socket, mode 0600).
 - The app never listens on a network port.
 
@@ -28,6 +35,11 @@ Response: `{ "id": 17, "ok": true, "result": ... }` or `{ "id": 17, "ok": false,
 
 Responses may come out of order; `id` pairs them. Events from the app (no `id`):
 `{ "event": "stop", "reason": "Option+Esc" }` (stop hotkey pressed), `{ "event": "permissions", "missing": ["accessibility"] }`.
+
+The Ispyx window asks the server for its part of the panel (activity, effects, password, denylist):
+`{ "event": "panelRequest", "req": 3, "kind": "state" | "action", "name": "setEffects", "value": false }`. The owner
+answers with the call `panelReply({ "req": 3, "ok": true, "result": ... })` or `{ "req": 3, "ok": false, "error": "..." }`
+(`panel.js`); the app takes the first answer and gives up after a timeout. Events never carry an `id` key.
 
 ### Functions
 

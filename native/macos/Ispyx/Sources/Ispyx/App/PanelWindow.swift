@@ -18,11 +18,44 @@ private final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
     }
 }
 
+/// Asks the MCP server for its part of the panel (activity, effects, password, denylist; core/resident.js
+/// panelModel) over the socket: a `panelRequest` event to every client, answered by the owner with `panelReply`
+/// (src/platform/darwin/panel.js). The first reply wins; no reply in time means no server to ask.
+final class PanelBridge {
+    static let shared = PanelBridge()
+    private var pending = [Int: (Bool, Any) -> Void]()
+    private var nextId = 1
+
+    func request(kind: String, name: String, value: Any?, timeout: TimeInterval, done: @escaping (Bool, Any) -> Void) {
+        let id = nextId
+        nextId += 1
+        pending[id] = done
+        EventBus.shared.send("panelRequest", ["req": id, "kind": kind, "name": name, "value": value ?? NSNull()])
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { [weak self] in
+            self?.pending.removeValue(forKey: id)?(false, "timeout")
+        }
+    }
+
+    func resolve(_ o: [String: Any]) {
+        guard let id = (o["req"] as? NSNumber)?.intValue, let done = pending.removeValue(forKey: id) else { return }
+        if (o["ok"] as? Bool) == true { done(true, o["result"] ?? NSNull()) }
+        else { done(false, (o["error"] as? String) ?? "The ispyx server refused this.") }
+    }
+}
+
+func registerPanelServices(_ r: Router) {
+    r.register("panelReply") { args in
+        PanelBridge.shared.resolve(try args.object(0))
+        return true
+    }
+}
+
 /// The Ispyx window. It hosts the shared page (Contents/Resources/panel/page.html, the same file the Windows app
 /// serves) in a WKWebView: no server, no URL, no port. All visible content comes from the page; this class supplies
 /// state and performs actions through `window.ispyx` (injected below):
 ///   getState()            -> { version, platform, autostart, permissions:[{id,title,detail,granted}], connect:{...} }
 ///   action(name, value?)  -> close, setAutostart, requestPermission, openPermissionSettings, showConfigFile, copy,
+///                            quit, openLog here; everything else goes to the MCP server (PanelBridge)
 ///                            quit, openLog
 /// Shown when the user opens the app (not when the MCP server starts it in the background), from the menu bar, and
 /// when a permission is missing. Also publishes the `permissions` event whenever the missing set changes.
@@ -249,7 +282,18 @@ final class PanelWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
         if value is NSNull { value = nil }
 
         if kind == "state" {
-            reply(id, ok: true, payload: stateObject())
+            // The server's part (activity, effects, password, denylist) from the resident (ResidentService),
+            // under what the app knows itself. While it is not up the page hides those sections.
+            let local = stateObject()
+            if clientCount() == 0 {
+                reply(id, ok: true, payload: local)
+                return
+            }
+            PanelBridge.shared.request(kind: "state", name: "state", value: nil, timeout: 0.8) { [weak self] ok, result in
+                var state = (ok ? result as? [String: Any] : nil) ?? [:]
+                for (k, v) in local where !(k == "clients" && state[k] != nil) { state[k] = v }
+                self?.reply(id, ok: true, payload: state)
+            }
             return
         }
         if kind != "action" {
@@ -305,7 +349,18 @@ final class PanelWindowController: NSObject, NSWindowDelegate, WKScriptMessageHa
             }
             reply(id, ok: true, payload: NSNull())
         default:
-            reply(id, ok: false, payload: "unknown action")
+            // setEffects, setPassword, setAuthRequired, addDeny, removeDeny, clearRecent: the server's settings
+            if clientCount() == 0 {
+                reply(id, ok: false, payload: "The ispyx server is not running yet. Try again in a moment.")
+                return
+            }
+            PanelBridge.shared.request(kind: "action", name: name, value: value, timeout: 10) { [weak self] ok, result in
+                if !ok, (result as? String) == "timeout" {
+                    self?.reply(id, ok: false, payload: "The ispyx server did not answer.")
+                } else {
+                    self?.reply(id, ok: ok, payload: result)
+                }
+            }
         }
     }
 

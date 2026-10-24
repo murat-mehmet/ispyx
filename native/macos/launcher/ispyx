@@ -1,7 +1,8 @@
 #!/bin/sh
 # MCP server launcher inside Ispyx.app: Contents/Resources/ispyx.
 # An MCP client config only needs this path, e.g. /Applications/Ispyx.app/Contents/Resources/ispyx
-# (the Node side starts Ispyx.app itself if it is not running). stdin/stdout stay the MCP stdio channel.
+# It runs `ispyx mcp`: a thin forwarder to the resident server that Ispyx.app runs (it opens the app first when
+# that is not running). stdin/stdout stay the MCP stdio channel.
 set -eu
 
 # resolve symlinks so the bundle is found even when started through a link
@@ -27,6 +28,6 @@ fi
 # The bundled Node is universal, and macOS picks the slice of the parent: an MCP client running under Rosetta
 # (an x86_64 Node or terminal on an Apple Silicon Mac) would get the Intel slice, emulated. Ask for arm64 there.
 if [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ]; then
-  exec arch -arm64 "$NODE" "$ENTRY" "$@"
+  exec arch -arm64 "$NODE" "$ENTRY" mcp "$@"
 fi
-exec "$NODE" "$ENTRY" "$@"
+exec "$NODE" "$ENTRY" mcp "$@"

@@ -255,6 +255,7 @@ function setText(id,t){if($(id).textContent!==t)$(id).textContent=t}
 function render(s){
   last=s;reachable=true;fails=0;
   var mac=s.platform==="darwin";
+  $("denyIn").placeholder=mac?"App name, e.g. KeePassXC":"program.exe";
   var perms=Array.isArray(s.permissions)?s.permissions:null;
   var missing=perms?perms.filter(function(p){return !p.granted}).length:0;
   $("app").hidden=false;

@@ -108,17 +108,17 @@ function openUrl(url) {
   c.unref();
 }
 
-/**
- * Starts tray, panel and the idle watchdog. ctx: { w (platform), config, owner, guard, auth, scan, shutdown(), log }.
- * Returns { panelUrl(), stop() }.
- */
-export async function startResident(ctx) {
-  const { w, config, owner, guard, auth, scan, shutdown, log } = ctx;
-  const t0 = Date.now();
-  let lastActive = Date.now();
-  const autostart = w.autostart ?? (w.name === 'win32' ? (await import('../platform/win32/autostart.js').catch(() => null))?.autostart ?? null : null);
+const safe = (fn, dflt) => { try { return fn(); } catch { return dflt; } };
 
-  const safe = (fn, dflt) => { try { return fn(); } catch { return dflt; } };
+/**
+ * The part of the panel that lives in the server, the same on every platform: activity, effects, password and
+ * denylist. ctx: { w (platform), config, owner, guard, auth, scan, clients() }. Windows wraps it in startResident
+ * (tray, autostart, connect info); on macOS Ispyx.app shows the panel and asks the owner for this part over its
+ * socket (platform/darwin servePanel), adding permissions, autostart and connect info itself.
+ */
+export function panelModel(ctx) {
+  const { w, config, guard, auth, scan, clients } = ctx;
+  const t0 = Date.now();
   const save = (patch) => {
     try { saveUserConfig(patch); } catch (e) { throw new PanelError(`Could not save the setting: ${e.message}`); }
   };
@@ -127,7 +127,7 @@ export async function startResident(ctx) {
     platform: w.name,
     pid: process.pid,
     uptimeMs: Date.now() - t0,
-    clients: owner.watchers(),
+    clients: clients(),
     recent: recent.slice(),
     recentTotal: totalCalls,
     stopLabel: guard.stopLabel,
@@ -135,12 +135,8 @@ export async function startResident(ctx) {
     passwordSet: safe(() => auth.passwordSet(), false),
     authRequired: !!config.auth,
     denylist: config.denylist.slice(),
-    autostart: safe(() => !!autostart?.get(), false),
-    ...(w.name === 'win32' ? { connect: connectInfo() } : {}),
   });
   const actions = {
-    quit: () => shutdown(),
-    setAutostart: (on) => { autostart?.set(!!on); return safe(() => !!autostart?.get(), false); },
     setEffects: (on) => { scan.enabled = !!on; config.animations = !!on; save({ animations: !!on }); return !!on; },
     setPassword: ({ current, next } = {}) => { auth.setPassword(next, current); },
     // Turning the requirement on needs a password to exist; turning it off needs the current one.
@@ -153,7 +149,7 @@ export async function startResident(ctx) {
     },
     addDeny: (value) => {
       const name = String(value ?? '').trim().toLowerCase();
-      if (!/^[\w][\w .()+-]{0,79}$/.test(name)) throw new PanelError('Use a process name such as keepass.exe.');
+      if (!/^[\w][\w .()+-]{0,79}$/.test(name)) throw new PanelError(w.name === 'darwin' ? 'Use an app name such as KeePassXC.' : 'Use a process name such as keepass.exe.');
       if (config.denylist.includes(name)) throw new PanelError('Already on the list.');
       config.denylist.push(name);
       save({ denylist: config.denylist.slice() });
@@ -167,6 +163,29 @@ export async function startResident(ctx) {
       save({ denylist: config.denylist.slice() });
     },
     clearRecent: () => { recent.length = 0; },
+  };
+  return { getState, actions };
+}
+
+/**
+ * Starts tray, panel and the idle watchdog. ctx: { w (platform), config, owner, guard, auth, scan, shutdown(), log }.
+ * Returns { panelUrl(), stop() }.
+ */
+export async function startResident(ctx) {
+  const { w, owner, shutdown, log } = ctx;
+  let lastActive = Date.now();
+  const autostart = w.autostart ?? (w.name === 'win32' ? (await import('../platform/win32/autostart.js').catch(() => null))?.autostart ?? null : null);
+
+  const model = panelModel({ ...ctx, clients: () => owner.watchers() });
+  const getState = () => ({
+    ...model.getState(),
+    autostart: safe(() => !!autostart?.get(), false),
+    ...(w.name === 'win32' ? { connect: connectInfo() } : {}),
+  });
+  const actions = {
+    ...model.actions,
+    quit: () => shutdown(),
+    setAutostart: (on) => { autostart?.set(!!on); return safe(() => !!autostart?.get(), false); },
     showConfigFile: () => revealFile(connectInfo().desktopConfigPath),
     openLog: () => { if (log?.file) { const c = spawn('notepad.exe', [log.file], { stdio: 'ignore', detached: true }); c.on('error', () => {}); c.unref(); } },
   };
@@ -210,6 +229,9 @@ export async function startResident(ctx) {
     } catch (e) { log?.write('error', ['panel failed:', e]); }
   };
 
+  // macOS: Ispyx.app shows the panel and asks for this state (it adds permissions, start at login, connect info)
+  const stopServing = w.servePanel?.({ getState, actions });
+
   let tray = null;
   try {
     const Tray = w.Tray ?? (w.name === 'win32' ? (await import('../platform/win32/tray.js').catch(() => null))?.Tray : null);
@@ -240,6 +262,7 @@ export async function startResident(ctx) {
     touch: () => { lastActive = Date.now(); },
     stop: () => {
       if (timer) clearInterval(timer);
+      stopServing?.();
       try { tray?.destroy(); } catch { /* ignore */ }
       closePanel();
       closePanelWindow();

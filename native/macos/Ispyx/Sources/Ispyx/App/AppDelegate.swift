@@ -38,6 +38,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             startError = error.localizedDescription
         }
         LayerRegistry.cleanStaleFiles()
+        // the resident server: activity and settings without any AI app, the pipe the MCP forwarders talk to
+        if server != nil { ResidentService.shared.start() }
 
         status.clientCount = { [weak self] in self?.server?.clientCount ?? 0 }
         status.startError = { [weak self] in self?.startError }
@@ -49,6 +51,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         status.show()
         return false
+    }
+
+    /// Quit waits for the resident to shut down (it tells the MCP forwarders to exit first), with the main thread free
+    /// to answer the calls it makes on the way out.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        ResidentService.shared.stop { NSApp.reply(toApplicationShouldTerminate: true) }
+        return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -64,6 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         router.register("version") { _ in return version }
 
         registerOverlayServices(router)
+        registerPanelServices(router)
         registerDialogServices(router)
         registerLayerServices(router)
 

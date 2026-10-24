@@ -46,8 +46,10 @@ function start() {
       sab,
       bigPort: ch.port2,
       endpoint: override || defaultEndpoint(),
-      autostart: !override,
-      waitMs: Number(process.env.ISPYX_HELPER_WAIT_MS) || (override ? 2000 : 10000),
+      // a resident started by Ispyx.app never opens the app again: when it cannot reach the app, the app is gone
+      autostart: !override && !process.env.ISPYX_APP_PID,
+      // started by Ispyx.app: an app that does not answer is gone, so give up fast (the resident then leaves)
+      waitMs: Number(process.env.ISPYX_HELPER_WAIT_MS) || (override ? 2000 : process.env.ISPYX_APP_PID ? 1000 : 10000),
       notRunningMessage: NOT_RUNNING,
     },
     transferList: [ch.port2],

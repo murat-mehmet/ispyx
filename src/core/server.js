@@ -14,7 +14,7 @@ import { ScanAnimation, keyLabels } from '../effects/scan.js';
 import { pipeName, listenOwner, callOwner, watchOwner, OwnerGone } from './ipc.js';
 import { resolveMode } from './mode.js';
 import { ensureResident } from './launcher.js';
-import { recordCall, setupLogging, startResident } from './resident.js';
+import { panelModel, recordCall, setupLogging, startResident } from './resident.js';
 
 const { parseSequence, insertsContent, Overlay, installStopHotkey } = w;
 
@@ -27,6 +27,7 @@ const scan = new ScanAnimation({ enabled: config.animations });
 let pendingAnim = null; // the screenshot animation in progress: the next queued call waits for it
 let owner = null;
 let residentUi = null;
+let stdioOpen = false; // classic: this process still serves its own MCP client
 const pipe = pipeName();
 
 function initCore() {
@@ -52,7 +53,11 @@ function shutdownAll() {
 async function tryBecomeOwner() {
   if (owner) return true;
   owner = await listenOwner(pipe, runTool);
-  if (owner) initCore();
+  if (owner) {
+    initCore();
+    // macOS: Ispyx.app shows the panel and asks the owner for activity, effects, password and denylist
+    if (mode === 'classic' && w.servePanel) w.servePanel(panelModel({ w, config, owner, guard, auth, scan, clients: () => owner.clients() + (stdioOpen ? 1 : 0) }));
+  }
   return !!owner;
 }
 
@@ -159,7 +164,8 @@ function runTool(name, args) {
   const h = handlers.get(name);
   if (!h) throw new Error(`Unknown tool ${name}`);
   const ctx = { epoch: guard.epoch }; // a stop press after this point cancels the call, queued or running
-  if (mode === 'resident') { recordCall(name, args); residentUi?.touch(); }
+  recordCall(name, args); // the panel's activity list
+  residentUi?.touch();
   const call = () => callContext.run(ctx, () => h(args));
   if (UNQUEUED.has(name)) return call();
   const p = chain.then(call);
@@ -187,7 +193,9 @@ async function forwardToResident(name, args) {
       if (attempt === 0 && !(await ensureResident(pipe))) break;
     }
   }
-  return toolError('The ispyx app is not running and could not be started within 10 s. Start it from the Start menu or run "ispyx", then try again (log: %APPDATA%\\ispyx\\ispyx.log).');
+  return toolError(process.platform === 'darwin'
+    ? 'Ispyx.app is not running and could not be started within 10 s. Open Ispyx and allow the permissions its window asks for, then try again (log: ~/Library/Application Support/Ispyx/ispyx.log).'
+    : 'The ispyx app is not running and could not be started within 10 s. Start it from the Start menu or run "ispyx", then try again (log: %APPDATA%\\ispyx\\ispyx.log).');
 }
 
 async function dispatch(name, args) {
@@ -795,6 +803,14 @@ if (mode === 'resident') {
   }
   if (!owner) process.exit(0);
   residentUi = await startResident({ w, config, owner, guard, auth, scan, shutdown: shutdownAll, log });
+  // Started by Ispyx.app (macOS): the app stops it with SIGTERM when it quits, and quitting the app ends the
+  // forwarders too, so tell them first. If the app is gone without that (crash, kill), leave as well.
+  const appPid = Number(process.env.ISPYX_APP_PID) || 0;
+  if (appPid) {
+    process.on('SIGTERM', shutdownAll);
+    const t = setInterval(() => { try { process.kill(appPid, 0); } catch { shutdownAll(); } }, 1000);
+    t.unref?.();
+  }
 } else if (mode === 'mcp') {
   // thin stdio server: the resident does the work; it orders us to exit on its shutdown (second stop press, Quit)
   watchOwner(pipe, () => process.exit(0), () => false);
@@ -804,8 +820,10 @@ if (mode === 'resident') {
   await tryBecomeOwner();
   if (!owner) watchOwner(pipe, () => process.exit(0), () => !!owner);
   await server.connect(new StdioServerTransport());
+  stdioOpen = true;
   // When this Claude goes away, an owner that still serves other instances keeps running until the last one is gone.
   process.stdin.on('close', () => {
+    stdioOpen = false;
     if (!owner || owner.clients() === 0) process.exit(0);
     const t = setInterval(() => { if (owner.clients() === 0) process.exit(0); }, 2000);
     t.unref?.();

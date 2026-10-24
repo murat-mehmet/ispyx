@@ -70,6 +70,27 @@ try {
   await sleep(50);
   ok(got.length === 1, 'unsubscribed handler gets no more events');
 
+  // ---- panel: the app asks the owner for its part of the window ----
+  {
+    callSync('reset');
+    let effects = true;
+    const offPanel = d.servePanel({
+      getState: () => ({ effectsEnabled: effects, recent: [{ tool: 'move' }] }),
+      actions: { setEffects: (on) => { effects = !!on; return effects; }, addDeny: () => { throw new Error('Already on the list.'); } },
+    });
+    callSync('emit', 'panelRequest', { req: 7, kind: 'state', name: 'state', value: null });
+    callSync('emit', 'panelRequest', { req: 8, kind: 'action', name: 'setEffects', value: false });
+    callSync('emit', 'panelRequest', { req: 9, kind: 'action', name: 'addDeny', value: 'x' });
+    callSync('emit', 'panelRequest', { req: 10, kind: 'action', name: 'constructor', value: null });
+    await sleep(100);
+    const replies = Object.fromEntries(log().filter((c) => c.fn === 'panelReply').map((c) => [c.args[0].req, c.args[0]]));
+    ok(replies[7]?.ok && replies[7].result.effectsEnabled === true && replies[7].result.recent[0].tool === 'move', 'panel: state request answered with the model state');
+    ok(replies[8]?.ok && replies[8].result === false && effects === false, 'panel: action runs and returns its result');
+    ok(replies[9] && !replies[9].ok && replies[9].error === 'Already on the list.', 'panel: action error goes back as the message');
+    ok(replies[10] && !replies[10].ok, 'panel: only own actions run (no prototype names)');
+    offPanel();
+  }
+
   // ---- reconnect ----
   callSync('dropAll');
   await sleep(150);

@@ -10,8 +10,11 @@ import path from 'node:path';
 /**
  * Same user + same ISPYX_* (or legacy WIN_INPUT_*) settings = same endpoint, so test servers with their own env never meet the live one.
  * Windows: a named pipe. Elsewhere: a unix socket in the temp directory (per user on macOS), mode 0600.
+ * ISPYX_PIPE names the endpoint outright (Ispyx.app: its resident and the MCP clients' forwarders start in different
+ * environments, so a temp-directory path could differ between them).
  */
 export function pipeName() {
+  if (process.env.ISPYX_PIPE) return process.env.ISPYX_PIPE;
   const env = Object.entries(process.env).filter(([k]) => k.startsWith('ISPYX_') || k.startsWith('WIN_INPUT_')).sort().map(([k, v]) => `${k}=${v}`).join('\n');
   const user = os.userInfo().username.replace(/[^\w.-]/g, '_');
   const id = `ispyx-${user}-${crypto.createHash('sha1').update(env).digest('hex').slice(0, 8)}`;

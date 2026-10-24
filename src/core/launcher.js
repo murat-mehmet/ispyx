@@ -6,9 +6,20 @@ import { callOwner, OwnerGone, pipeName } from './ipc.js';
 const ENTRY = fileURLToPath(new URL('../server.js', import.meta.url));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Starts `ispyx --resident` detached and hidden, with this process's environment (same pipe). */
+/** Inside Ispyx.app (macOS) the app starts and watches the resident: the bundle path, else null. */
+function macApp() {
+  if (process.platform !== 'darwin') return null;
+  const m = /^(.*?\.app)\/Contents\/Resources\//.exec(ENTRY);
+  return m ? m[1] : null;
+}
+
+/** Starts `ispyx --resident` detached and hidden, with this process's environment (same pipe). Inside Ispyx.app it
+ * opens the app instead, which starts the resident itself. */
 export function spawnResident() {
-  const child = spawn(process.execPath, [ENTRY, '--resident'], { detached: true, windowsHide: true, stdio: 'ignore' });
+  const app = macApp();
+  const child = app
+    ? spawn('open', ['-g', app, '--args', '--background'], { stdio: 'ignore', detached: true })
+    : spawn(process.execPath, [ENTRY, '--resident'], { detached: true, windowsHide: true, stdio: 'ignore' });
   child.on('error', () => {});
   child.unref();
 }

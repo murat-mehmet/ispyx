@@ -1,5 +1,6 @@
 // Which role this process plays. Pure (no platform import), so the entry point can decide before loading anything.
-//   classic   macOS / Linux / fake: today's behaviour (every process is an MCP server, one of them owns the pipe)
+//   classic   npx on macOS / Linux / fake: every process is an MCP server, one of them owns the pipe
+//             (Ispyx.app passes --resident / mcp explicitly)
 //   launcher  Windows, no args, console attached: start the resident app if needed, then exit
 //   resident  `--resident`: the single owner of the pipe (tray, panel, tool queue); no stdio
 //   mcp       `mcp`: thin stdio MCP server forwarding every call to the resident

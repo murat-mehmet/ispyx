@@ -1,6 +1,8 @@
-# Resident model (Windows)
+# Resident model (Windows, and macOS inside Ispyx.app)
 
-On Windows ispyx is one resident app per user, like `Ispyx.app` on macOS. macOS, Linux and the fake platform keep the
+On Windows ispyx is one resident app per user. On macOS Ispyx.app runs the same resident (`--resident`, started by
+the app, see `src/platform/darwin/PROTOCOL.md`) and its MCP launcher is `ispyx mcp`; there the app, not a tray icon,
+shows the panel (`platform.servePanel`) and owns start at login. npx on macOS, Linux and the fake platform keep the
 classic model (every process is an MCP server, one of them owns the pipe); nothing below applies to them unless a
 process is started with an explicit `--resident` / `mcp` argument (used by tests with `ISPYX_PLATFORM=fake`).
 
