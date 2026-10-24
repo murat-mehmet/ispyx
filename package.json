@@ -34,6 +34,7 @@
     "typing-test": "node test/typing.js",
     "core-test": "node test/core/effects-fake.js",
     "ipc-test": "node test/core/ipc-unix.js",
+    "auth-panel-test": "node test/core/auth-panel.js",
     "resident-test": "node test/core/resident-fake.js",
     "darwin-test": "node test/darwin/client.js",
     "tray-test": "node test/win32-tray.js",

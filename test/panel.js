@@ -12,6 +12,10 @@ const actions = {
   changePassword: () => calls.push(['changePassword']),
   copy: (v) => calls.push(['copy', v]), requestPermission: (v) => calls.push(['requestPermission', v]),
   openPermissionSettings: (v) => calls.push(['openPermissionSettings', v]),
+  addDeny: (v) => calls.push(['addDeny', v]),
+  removeDeny: (v) => { if (v.current !== 'good') throw Object.assign(new Error('The password is wrong.'), { expose: true }); calls.push(['removeDeny', v.name]); },
+  setPassword: () => { throw new Error('secret internals'); },
+  setAuthRequired: (v) => calls.push(['setAuthRequired', v.on]),
 };
 const panel = await startPanel({ getState: () => state, actions });
 const port = new URL(panel.url).port;
@@ -82,6 +86,18 @@ assert.equal((await post({ name: 'openPermissionSettings', value: '../x' })).sta
 assert.equal((await post({ name: 'close' })).status, 200, 'close is a no-op');
 assert.equal((await post({ name: 'showConfigFile' })).status, 400, 'host does not define it');
 assert.deepEqual(calls.slice(3), [['copy', 'hello'], ['requestPermission', 'accessibility'], ['openPermissionSettings', 'screen-recording']]);
+// settings: object values are validated, and only refusals meant for the person are shown
+assert.equal((await post({ name: 'addDeny', value: 'x.exe' })).status, 200);
+assert.equal((await post({ name: 'addDeny', value: 5 })).status, 400);
+assert.equal((await post({ name: 'setAuthRequired', value: { on: 'yes' } })).status, 400, 'on must be boolean');
+assert.equal((await post({ name: 'setAuthRequired', value: { on: true } })).status, 200);
+assert.equal((await post({ name: 'removeDeny', value: 'x' })).status, 400, 'object required');
+assert.equal((await post({ name: 'removeDeny', value: { name: 'x.exe', current: 'x'.repeat(500) } })).status, 400, 'too long');
+const wrong = await post({ name: 'removeDeny', value: { name: 'x.exe', current: 'bad' } });
+assert.equal(wrong.status, 400); assert.equal(JSON.parse(wrong.body).error, 'The password is wrong.');
+assert.equal((await post({ name: 'removeDeny', value: { name: 'x.exe', current: 'good' } })).status, 200);
+const hidden = await post({ name: 'setPassword', value: { next: 'abcdef' } });
+assert.equal(hidden.status, 500); assert.ok(!hidden.body.includes('secret internals'), 'internal errors stay hidden');
 assert.equal((await post({ name: 'quit' })).status, 200);
 await new Promise((r) => setTimeout(r, 150));
 assert.deepEqual(calls.at(-1), ['quit']);

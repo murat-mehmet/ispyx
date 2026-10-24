@@ -42,13 +42,28 @@ export function env(name, source = process.env) {
   return old === '' ? undefined : old;
 }
 
+export const userConfigPath = () => { try { return path.join(w.dataDir(), 'config.json'); } catch { return null; } };
+
+/** Writes settings changed in the panel (denylist, auth, animations) into the per-user config.json, keeping other keys. */
+export function saveUserConfig(patch) {
+  const file = userConfigPath();
+  if (!file) throw new Error('No place to save settings.');
+  let cur = {};
+  try { cur = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* new file */ }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ ...cur, ...patch }, null, 2));
+}
+
 export function loadConfig(source = process.env) {
   const e = (name) => env(name, source);
   let cfg = { ...DEFAULTS };
-  // macOS: the app bundle is read-only, so the config lives in ~/Library/Application Support/Ispyx/config.json
-  const userCfg = w.name === 'darwin' ? path.join(w.dataDir(), 'config.json') : null;
-  const file = e('CONFIG') || (userCfg && fs.existsSync(userCfg) ? userCfg : path.join(ROOT, 'config.json'));
-  if (fs.existsSync(file)) {
+  // The package folder is read-only on macOS and gets replaced on update everywhere, so what the panel saves lives
+  // in the per-user data folder (config.json there). On macOS it replaces the package config, elsewhere it is
+  // layered on top of it.
+  const userCfg = e('CONFIG') ? null : userConfigPath();
+  const files = e('CONFIG') ? [e('CONFIG')] : [path.join(ROOT, 'config.json'), userCfg];
+  for (const file of files) {
+    if (!file || !fs.existsSync(file) || (w.name === 'darwin' && file !== userCfg && fs.existsSync(userCfg))) continue;
     try {
       cfg = { ...cfg, ...JSON.parse(fs.readFileSync(file, 'utf8')) };
     } catch (e) {

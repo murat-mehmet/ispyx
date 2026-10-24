@@ -53,6 +53,19 @@ pre{flex:1;min-width:0;margin:0;background:var(--fill);border-radius:7px;padding
 .v{color:var(--mute);text-align:right;overflow-wrap:anywhere}
 .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
 .tags span{background:var(--fill);border-radius:999px;padding:1px 9px;font-size:12px}
+.tags span button{border:0;background:none;box-shadow:none;padding:0 0 0 5px;color:var(--mute);font-size:13px;line-height:1}
+.tags span button:hover{color:var(--danger);background:none}
+.add{display:flex;gap:8px;margin-top:9px}
+input[type=text],input[type=password]{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:7px;padding:4px 9px;min-width:0}
+.add input{flex:1}
+input[type=text]:focus-visible,input[type=password]:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--fg);padding:16px 18px;width:min(340px,calc(100vw - 32px));box-shadow:0 12px 40px rgba(0,0,0,.35)}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+dialog h3{margin:0 0 10px;font-size:14px}
+dialog label{display:block;font-size:12px;color:var(--mute);margin:8px 0 3px}
+dialog input{width:100%}
+.err{color:var(--danger);font-size:12px;margin:8px 0 0}
+.btns.end{justify-content:flex-end}
 ul{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 ul.open{max-height:320px;overflow-y:auto;overscroll-behavior:contain}
 li{padding:6px 14px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:baseline}
@@ -129,10 +142,24 @@ button.link:hover{background:none;color:var(--fg)}
 <section id="sSafe" hidden>
   <h2>Safety</h2>
   <div class="card">
-    <div class="item line" id="rPw" hidden><span>Password set</span><span class="v" id="pw"></span></div>
-    <div class="item" id="rDeny" hidden><span>Never touched</span><div class="tags" id="deny"></div></div>
+    <div class="item line" id="rAuth" hidden><label for="authOn">Ask for a password</label><span class="sw"><input type="checkbox" id="authOn"><i></i></span></div>
+    <div class="item line" id="rPw" hidden><span id="pwTxt">Password</span><button type="button" id="pwBtn">Set…</button></div>
+    <div class="item" id="rDeny" hidden>
+      <span>Never touched</span>
+      <div class="tags" id="deny"></div>
+      <form class="add" id="denyForm"><input id="denyIn" placeholder="program.exe" maxlength="80" autocomplete="off" spellcheck="false"><button type="submit">Add</button></form>
+    </div>
   </div>
 </section>
+
+<dialog id="dlg">
+  <form id="dlgForm">
+    <h3 id="dlgT"></h3>
+    <div id="dlgFields"></div>
+    <p class="err" id="dlgErr" hidden></p>
+    <div class="btns end"><button type="button" id="dlgCancel">Cancel</button><button type="submit" class="pri" id="dlgOk">OK</button></div>
+  </form>
+</dialog>
 
 <footer>
   <button type="button" class="link" id="log" hidden>Open log</button>
@@ -146,7 +173,9 @@ button.link:hover{background:none;color:var(--fg)}
 "use strict";
 // Host bridge. macOS injects window.ispyx before this script; on Windows the panel server answers these routes.
 if(!window.ispyx){
-  var call=function(url,opt){return fetch(url,opt).then(function(r){if(!r.ok)throw new Error(String(r.status));return r.json()})};
+  var call=function(url,opt){return fetch(url,opt).then(function(r){
+    if(!r.ok)return r.json().catch(function(){return {}}).then(function(b){throw new Error(b.error||String(r.status))});
+    return r.json()})};
   window.ispyx={
     getState:function(){return call("api/state",{cache:"no-store"})},
     action:function(name,value){return call("api/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:name,value:value})})}
@@ -270,12 +299,22 @@ function render(s){
   show("more",false);
   if(hasRecent)renderRecent(s.recent,s.recentTotal);
 
-  var hasPw=typeof s.passwordSet==="boolean",hasDeny=Array.isArray(s.denylist);
-  show("sSafe",hasPw||hasDeny);show("rPw",hasPw);show("rDeny",hasDeny);
-  if(hasPw)setText("pw",s.passwordSet?"Yes":"No");
+  var hasPw=typeof s.passwordSet==="boolean",hasDeny=Array.isArray(s.denylist),hasAuth=typeof s.authRequired==="boolean";
+  show("sSafe",hasPw||hasDeny||hasAuth);show("rPw",hasPw);show("rAuth",hasAuth);show("rDeny",hasDeny);
+  if(hasPw){setText("pwTxt",s.passwordSet?"Password is set":"No password yet");setText("pwBtn",s.passwordSet?"Change…":"Set…")}
+  if(hasAuth&&!busy.authOn)$("authOn").checked=s.authRequired;
   if(hasDeny){
-    var d=$("deny");d.textContent="";
-    if(s.denylist.length)s.denylist.forEach(function(x){d.appendChild(el("span",null,x))});else d.appendChild(el("span","v","none"));
+    var d=$("deny"),sig=s.denylist.join("\n")+"|"+!!s.passwordSet;
+    if(d.dataset.sig!==sig){ // rebuild only on change so a click is never lost to the 1 s refresh
+      d.dataset.sig=sig;d.textContent="";
+      if(!s.denylist.length)d.appendChild(el("span","v","none"));
+      s.denylist.forEach(function(x){
+        var t=el("span",null,x),b=el("button",null,"×");
+        b.type="button";b.title="Remove "+x;b.setAttribute("aria-label","Remove "+x);
+        b.addEventListener("click",function(){removeDeny(x)});
+        t.appendChild(b);d.appendChild(t);
+      });
+    }
   }
 
   show("log",!mac);
@@ -298,6 +337,74 @@ function toggle(id,key,name){
   });
 }
 toggle("auto","auto","setAutostart");toggle("fx","fx","setEffects");
+
+// Small modal for passwords. fn(values) returns a promise; a rejection shows its message and keeps the dialog open.
+var dlg=$("dlg"),dlgRun=null;
+function ask(title,fields,okText,fn){
+  $("dlgT").textContent=title;$("dlgOk").textContent=okText||"OK";
+  var box=$("dlgFields");box.textContent="";$("dlgErr").hidden=true;
+  fields.forEach(function(f){
+    var l=el("label",null,f.label),i=document.createElement("input");
+    i.type="password";i.id="f_"+f.id;i.autocomplete=f.id==="current"?"current-password":"new-password";
+    l.htmlFor=i.id;box.appendChild(l);box.appendChild(i);
+  });
+  dlgRun=function(){
+    var v={};fields.forEach(function(f){v[f.id]=$("f_"+f.id).value});
+    return fn(v);
+  };
+  if(typeof dlg.showModal==="function")dlg.showModal();else dlg.setAttribute("open","");
+  var first=box.querySelector("input");if(first)first.focus();
+}
+$("dlgForm").addEventListener("submit",function(e){
+  e.preventDefault();if(!dlgRun)return;
+  $("dlgOk").disabled=true;
+  Promise.resolve().then(dlgRun).then(function(){dlg.close();dlgRun=null;poll()},function(err){
+    $("dlgErr").textContent=err&&err.message?err.message:"Something went wrong.";$("dlgErr").hidden=false;
+  }).then(function(){$("dlgOk").disabled=false});
+});
+$("dlgCancel").addEventListener("click",function(){dlg.close();dlgRun=null;poll()});
+dlg.addEventListener("cancel",function(){dlgRun=null});
+
+function askNewPassword(current){
+  var fields=[];if(current)fields.push({id:"current",label:"Current password"});
+  fields.push({id:"next",label:"New password (6+ characters)"},{id:"again",label:"Repeat new password"});
+  return fields;
+}
+function newPasswordFn(v){
+  if(v.next!==v.again)return Promise.reject(new Error("The two passwords do not match."));
+  return act("setPassword",{current:v.current,next:v.next});
+}
+$("pwBtn").addEventListener("click",function(){
+  var has=last&&last.passwordSet;
+  ask(has?"Change password":"Set a password",askNewPassword(has),"Save",newPasswordFn);
+});
+$("authOn").addEventListener("change",function(){
+  var want=$("authOn").checked,box=$("authOn");
+  busy.authOn=true;
+  var done=function(){busy.authOn=false;poll()};
+  if(want&&!(last&&last.passwordSet)){ // a password must exist first; turn it on right after it is set
+    box.checked=false;
+    ask("Set a password",askNewPassword(false),"Save",function(v){return newPasswordFn(v).then(function(){return act("setAuthRequired",{on:true})})});
+    done();return;
+  }
+  if(!want&&last&&last.passwordSet){
+    box.checked=true;
+    ask("Turn off password",[{id:"current",label:"Password"}],"Turn off",function(v){return act("setAuthRequired",{on:false,current:v.current})});
+    done();return;
+  }
+  act("setAuthRequired",{on:want,current:undefined}).catch(function(){box.checked=!want}).then(done);
+});
+function removeDeny(name){
+  if(last&&last.passwordSet){
+    ask("Remove "+name,[{id:"current",label:"Password"}],"Remove",function(v){return act("removeDeny",{name:name,current:v.current})});
+  }else act("removeDeny",{name:name}).then(poll,function(){});
+}
+$("denyForm").addEventListener("submit",function(e){
+  e.preventDefault();var v=$("denyIn").value.trim();if(!v)return;
+  act("addDeny",v).then(function(){$("denyIn").value="";poll()},function(err){
+    $("denyIn").setCustomValidity(err.message);$("denyIn").reportValidity();setTimeout(function(){$("denyIn").setCustomValidity("")},2500);
+  });
+});
 $("cmdCopy").addEventListener("click",function(){copyText($("cmd").textContent,this)});
 $("cfgCopy").addEventListener("click",function(){copyText($("cfg").textContent,this)});
 $("cfgShow").addEventListener("click",function(){act("showConfigFile")});

@@ -21,6 +21,12 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+import { saveUserConfig } from './guard.js';
+import { PasswordError } from './auth.js';
+
+/** A refusal whose message goes to the person at the panel. */
+class PanelError extends PasswordError {}
+
 const MAX_RECENT = 200; // older calls are only in the action log
 const MAX_LOG = 256 * 1024;
 export const recent = [];
@@ -113,6 +119,9 @@ export async function startResident(ctx) {
   const autostart = w.autostart ?? (w.name === 'win32' ? (await import('../platform/win32/autostart.js').catch(() => null))?.autostart ?? null : null);
 
   const safe = (fn, dflt) => { try { return fn(); } catch { return dflt; } };
+  const save = (patch) => {
+    try { saveUserConfig(patch); } catch (e) { throw new PanelError(`Could not save the setting: ${e.message}`); }
+  };
   const getState = () => ({
     version: VERSION,
     platform: w.name,
@@ -123,7 +132,8 @@ export async function startResident(ctx) {
     recentTotal: totalCalls,
     stopLabel: guard.stopLabel,
     effectsEnabled: !!scan.enabled,
-    passwordSet: safe(() => !!auth.read().hash, false),
+    passwordSet: safe(() => auth.passwordSet(), false),
+    authRequired: !!config.auth,
     denylist: config.denylist.slice(),
     autostart: safe(() => !!autostart?.get(), false),
     ...(w.name === 'win32' ? { connect: connectInfo() } : {}),
@@ -131,7 +141,31 @@ export async function startResident(ctx) {
   const actions = {
     quit: () => shutdown(),
     setAutostart: (on) => { autostart?.set(!!on); return safe(() => !!autostart?.get(), false); },
-    setEffects: (on) => { scan.enabled = !!on; config.animations = !!on; return !!on; },
+    setEffects: (on) => { scan.enabled = !!on; config.animations = !!on; save({ animations: !!on }); return !!on; },
+    setPassword: ({ current, next } = {}) => { auth.setPassword(next, current); },
+    // Turning the requirement on needs a password to exist; turning it off needs the current one.
+    setAuthRequired: ({ on, current } = {}) => {
+      if (on) {
+        if (!auth.passwordSet()) throw new PanelError('Set a password first.');
+      } else if (auth.passwordSet() && !auth.verify(current)) throw new PanelError('The password is wrong.');
+      auth.enabled = config.auth = !!on;
+      save({ auth: !!on });
+    },
+    addDeny: (value) => {
+      const name = String(value ?? '').trim().toLowerCase();
+      if (!/^[\w][\w .()+-]{0,79}$/.test(name)) throw new PanelError('Use a process name such as keepass.exe.');
+      if (config.denylist.includes(name)) throw new PanelError('Already on the list.');
+      config.denylist.push(name);
+      save({ denylist: config.denylist.slice() });
+    },
+    // Taking a program off the list lowers protection, so it asks for the password when one is set.
+    removeDeny: ({ name, current } = {}) => {
+      if (auth.passwordSet() && !auth.verify(current)) throw new PanelError('The password is wrong.');
+      const i = config.denylist.indexOf(String(name ?? '').toLowerCase());
+      if (i < 0) return;
+      config.denylist.splice(i, 1);
+      save({ denylist: config.denylist.slice() });
+    },
     clearRecent: () => { recent.length = 0; },
     showConfigFile: () => revealFile(connectInfo().desktopConfigPath),
     openLog: () => { if (log?.file) { const c = spawn('notepad.exe', [log.file], { stdio: 'ignore', detached: true }); c.on('error', () => {}); c.unref(); } },

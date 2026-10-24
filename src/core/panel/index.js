@@ -8,9 +8,16 @@ import { fileURLToPath } from 'node:url';
 const PAGE = fileURLToPath(new URL('./page.html', import.meta.url));
 const COOKIE = 'ispyx_panel';
 // Explicit whitelist; an action is also callable only if the host's `actions` object defines it.
-const ACTIONS = ['quit', 'setAutostart', 'setEffects', 'openLog', 'copy', 'close', 'requestPermission', 'openPermissionSettings', 'showConfigFile', 'clearRecent'];
+const ACTIONS = ['quit', 'setAutostart', 'setEffects', 'openLog', 'copy', 'close', 'requestPermission', 'openPermissionSettings', 'showConfigFile', 'clearRecent', 'addDeny', 'removeDeny', 'setPassword', 'setAuthRequired'];
 const BOOL_ACTIONS = new Set(['setAutostart', 'setEffects']);
-const STRING_ACTIONS = new Set(['copy', 'requestPermission', 'openPermissionSettings']); // value must be a short string
+const STRING_ACTIONS = new Set(['copy', 'requestPermission', 'openPermissionSettings', 'addDeny']); // value must be a short string
+// value is an object of short strings (and a boolean for setAuthRequired.on)
+const OBJECT_ACTIONS = { setPassword: ['current', 'next'], setAuthRequired: ['current'], removeDeny: ['name', 'current'] };
+const objectOk = (name, v) => {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+  if (name === 'setAuthRequired' && typeof v.on !== 'boolean') return false;
+  return OBJECT_ACTIONS[name].every((k) => v[k] === undefined || (typeof v[k] === 'string' && v[k].length <= 200));
+};
 const PERMISSION_IDS = new Set(['accessibility', 'screen-recording']);
 
 function safeEq(a, b) {
@@ -99,6 +106,7 @@ export async function startPanel({ getState, actions, port = 0 }) {
         }
         if (BOOL_ACTIONS.has(name) && typeof body.value !== 'boolean') return deny(res, 400, 'boolean value required');
         if (STRING_ACTIONS.has(name) && (typeof body.value !== 'string' || body.value.length > 3000)) return deny(res, 400, 'string value required');
+        if (OBJECT_ACTIONS[name] && !objectOk(name, body.value)) return deny(res, 400, 'bad value');
         if ((name === 'requestPermission' || name === 'openPermissionSettings') && !PERMISSION_IDS.has(body.value)) return deny(res, 400, 'unknown permission');
         if (name === 'close') return send(res, 200, { ok: true }); // macOS-only; nothing to close here
         // Reply first for quit, since it may tear this server down.
@@ -107,12 +115,13 @@ export async function startPanel({ getState, actions, port = 0 }) {
           setTimeout(() => { Promise.resolve().then(() => actions.quit()).catch(() => {}); }, 50);
           return;
         }
-        await actions[name](BOOL_ACTIONS.has(name) || STRING_ACTIONS.has(name) ? body.value : undefined);
+        await actions[name](BOOL_ACTIONS.has(name) || STRING_ACTIONS.has(name) || OBJECT_ACTIONS[name] ? body.value : undefined);
         return send(res, 200, { ok: true });
       }
       return deny(res, 404, 'not found');
     } catch (e) {
-      if (!res.headersSent) send(res, 500, { error: 'internal error' });
+      if (!res.headersSent && e && e.expose) send(res, 400, { error: String(e.message).slice(0, 200) }); // a refusal meant for the person at the panel
+      else if (!res.headersSent) send(res, 500, { error: 'internal error' });
       else res.end();
     }
   });

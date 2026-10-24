@@ -14,6 +14,9 @@ const MIN_PASSWORD = 6;
 const MAX_WRONG = 3;
 const ITER = 200000;
 
+/** A refusal whose message is meant for the person at the panel. */
+export class PasswordError extends Error { constructor(m) { super(m); this.expose = true; } }
+
 export const defaultAuthFile = () => path.join(platform.dataDir(), 'auth.json');
 
 export const toMinutes = (value, unit) => Math.min(MAX_MIN, Math.max(1, Math.round(Number(value) * (UNIT_MIN[unit] ?? 60))));
@@ -33,6 +36,8 @@ export class Auth {
     Object.assign(this, { enabled, file, timeoutMs, prompt, now });
     this.pending = null;
     this.until = 0;
+    this.wrongTries = 0;
+    this.lockedUntil = 0;
   }
 
   read() {
@@ -42,6 +47,33 @@ export class Auth {
   write(data) {
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
     fs.writeFileSync(this.file, JSON.stringify(data, null, 2));
+  }
+
+  passwordSet() {
+    return !!this.read().hash;
+  }
+
+  /** True when `pw` is the stored password. Three wrong tries lock further tries for 30 s (in memory). */
+  verify(pw) {
+    const data = this.read();
+    if (!data.hash) return false;
+    if (this.lockedUntil > this.now()) throw new PasswordError('Too many wrong passwords. Try again in a few seconds.');
+    const a = Buffer.from(hash(String(pw ?? ''), data.salt, data.iter), 'hex');
+    const ok = crypto.timingSafeEqual(a, Buffer.from(data.hash, 'hex'));
+    if (ok) { this.wrongTries = 0; return true; }
+    if (++this.wrongTries >= MAX_WRONG) { this.wrongTries = 0; this.lockedUntil = this.now() + 30000; }
+    return false;
+  }
+
+  /** Panel use: sets the first password, or changes it when `current` matches. Throws PasswordError with a plain message. */
+  setPassword(next, current) {
+    next = String(next ?? '');
+    if (next.length < MIN_PASSWORD) throw new PasswordError(`Password must be at least ${MIN_PASSWORD} characters.`);
+    if (this.passwordSet() && !this.verify(current)) throw new PasswordError('The current password is wrong.');
+    const data = this.read();
+    const salt = crypto.randomBytes(16).toString('hex');
+    Object.assign(data, { salt, iter: ITER, hash: hash(next, salt, ITER) });
+    this.write(data);
   }
 
   /** The unlock lives in memory only: every server start (and every /mcp reconnect) asks again. */
