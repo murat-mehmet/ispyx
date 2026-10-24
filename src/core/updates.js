@@ -65,14 +65,32 @@ export function startUpdateCheck({ current, enabled = true, firstDelayMs = 15000
 }
 
 /**
+ * Where a running update is, from its log: { step, error } ("Downloading Ispyx 1.0.6 · 45%", "Checking the app").
+ * The installer (scripts/install.sh) writes "==> <step>" lines, "Downloaded N%" while downloading and
+ * "ispyx: <reason>" when it gives up; `ispyx update` on Windows writes npm's output.
+ */
+export function readUpdateLog(text) {
+  let step = 'Starting', pct = null, error = null;
+  for (const raw of String(text).split(/\r?\n/)) {
+    const line = raw.trim();
+    let m;
+    if ((m = /^==> (.+)$/.exec(line))) { step = m[1]; pct = null; }
+    else if ((m = /^Downloaded (\d+)%$/.exec(line))) pct = Number(m[1]);
+    else if ((m = /^ispyx: (.+)$/.exec(line))) error = m[1];
+  }
+  return { step: pct === null ? step : `${step} \u00b7 ${pct}%`, error };
+}
+
+/**
  * Starts the update in a process of its own (the update quits the running ispyx, this process included) and
- * returns at once. Its output goes to update.log in the data directory.
+ * returns at once. Its output goes to update.log in the data directory; progress() reads it.
  */
 export function launchUpdate({ platform = process.platform, dataDir }) {
   let out = 'ignore';
+  const log = path.join(dataDir, 'update.log');
   try {
     fs.mkdirSync(dataDir, { recursive: true });
-    out = fs.openSync(path.join(dataDir, 'update.log'), 'w');
+    out = fs.openSync(log, 'w');
   } catch { /* no log then */ }
   const child = platform === 'darwin'
     ? spawn('/bin/sh', ['-c', `curl -fsSL ${MAC_INSTALL_URL} | sh`], { detached: true, stdio: ['ignore', out, out] })
@@ -80,4 +98,5 @@ export function launchUpdate({ platform = process.platform, dataDir }) {
   child.on('error', () => {});
   child.unref();
   if (typeof out === 'number') fs.closeSync(out);
+  return { progress: () => { try { return readUpdateLog(fs.readFileSync(log, 'utf8')); } catch { return { step: 'Starting', error: null }; } } };
 }

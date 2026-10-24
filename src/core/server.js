@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// ispyx: local desktop-control MCP server (Windows; macOS in development). stdio only; opens no network port.
+// ispyx: local desktop-control MCP server (Windows and macOS). stdio only; opens no network port.
 import fs from 'node:fs';
+import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -42,6 +43,15 @@ function initCore() {
   guard.startWatching();
   if (guard.stopIsDefault) stopHook = installStopHotkey((reason) => guard.trigger(reason)); // default stop chord only (Alt+Esc / Option+Esc); installed while working
   guard.log({ tool: 'server_start', auth: config.auth, denylist: config.denylist, pid: process.pid });
+}
+
+/**
+ * Leaves without ordering the forwarders to exit (an update): they stay connected to their AI apps and reach the
+ * new resident on their next call, which starts it if needed. `ispyx quit`, the tray Quit and the stop key end them.
+ */
+function restartQuietly() {
+  residentUi?.stop();
+  setTimeout(() => process.exit(0), 100);
 }
 
 /** Orders every connected server to exit, then leaves (second stop press, tray Quit, `ispyx quit`). */
@@ -179,6 +189,7 @@ function control(name) {
   if (name === '__ping') return 'pong';
   if (name === '__panel') return Promise.resolve(residentUi?.openPanel?.()).then(() => '');
   if (name === '__quit') { setTimeout(shutdownAll, 50); return 'bye'; }
+  if (name === '__restart') { setTimeout(restartQuietly, 50); return 'bye'; } // `ispyx update`: forwarders stay
   throw new Error(`Unknown control call ${name}`);
 }
 
@@ -808,7 +819,10 @@ if (mode === 'resident') {
   // forwarders too, so tell them first. If the app is gone without that (crash, kill), leave as well.
   const appPid = Number(process.env.ISPYX_APP_PID) || 0;
   if (appPid) {
-    process.on('SIGTERM', shutdownAll);
+    // ...unless the app quits for an update (scripts/install.sh leaves this marker): then the forwarders stay
+    const marker = path.join(w.dataDir(), 'updating');
+    const updating = () => { try { return Date.now() - fs.statSync(marker).mtimeMs < 10 * 60 * 1000; } catch { return false; } };
+    process.on('SIGTERM', () => (updating() ? restartQuietly() : shutdownAll()));
     const t = setInterval(() => { try { process.kill(appPid, 0); } catch { shutdownAll(); } }, 1000);
     t.unref?.();
   }

@@ -5,7 +5,7 @@ import w from '../src/platform/index.js';
 import { encodePng, decodePng, toRgbaScaled, cropCapture } from '../src/core/image.js';
 import { parseSequence, insertsContent } from '../src/platform/win32/keys.js';
 import { catmullRom } from '../src/effects/scan.js';
-import { compareVersions } from '../src/core/updates.js';
+import { compareVersions, readUpdateLog } from '../src/core/updates.js';
 import { useMacAppResident } from '../src/core/launcher.js';
 
 let failed = 0;
@@ -48,6 +48,12 @@ check('crop a Uint8Array capture', crop.width === 2 && crop.height === 2 && [0, 
 check('versions compare by number, a release beats its pre-release',
   compareVersions('1.0.10', '1.0.9') === 1 && compareVersions('1.0.1', '1.0.1') === 0 && compareVersions('v1.0.0', '1.0.1') === -1
   && compareVersions('1.1.0', '1.1.0-beta.1') === 1 && compareVersions('1.1.0-beta.1', '1.0.9') === 1);
+{
+  const log = '\n==> Looking for the newest version\n    Newest: 1.0.6, installed: 1.0.5\n==> Downloading Ispyx 1.0.6\n    Downloaded 0%\n    Downloaded 45%\n';
+  const a = readUpdateLog(log), b = readUpdateLog(log + '    Downloaded 100%\n==> Checking the app\n');
+  const c = readUpdateLog(log + 'ispyx: the app is not signed by the ispyx developer (team X). Nothing was changed.\n');
+  check('update progress read from the installer log', a.step === 'Downloading Ispyx 1.0.6 \u00b7 45%' && !a.error && b.step === 'Checking the app' && /not signed/.test(c.error ?? ''));
+}
 check('npm copy keeps its own server in tests or with an explicit pipe',
   !useMacAppResident({ ISPYX_PLATFORM: 'fake' }) && !useMacAppResident({ ISPYX_PIPE: '/tmp/x.sock' }));
 

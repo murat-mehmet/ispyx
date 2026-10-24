@@ -98,12 +98,17 @@ export async function runUpdate() {
     });
     process.exit(code);
   }
+  // "==> <step>" lines: the panel shows them while it runs this (core/updates.js readUpdateLog)
+  const step = (s) => process.stdout.write(`\n==> ${s}\n`);
   const pipe = pipeName();
   const wasRunning = await residentRunning(pipe);
   if (wasRunning) {
-    try { await callOwner(pipe, '__quit', {}); } catch { /* gone before answering */ }
+    step('Stopping ispyx');
+    // quietly: the `ispyx mcp` forwarders stay connected and reach the new resident on their next call
+    try { await callOwner(pipe, '__restart', {}); } catch { /* gone before answering */ }
     for (let i = 0; i < 40 && await residentRunning(pipe); i++) await sleep(150);
   }
+  step('Installing the latest ispyx (npm install -g ispyx@latest)');
   const code = await new Promise((resolve) => {
     const c = spawn('npm', ['install', '-g', 'ispyx@latest'], { stdio: 'inherit', shell: true });
     c.on('error', () => resolve(1));
@@ -111,7 +116,7 @@ export async function runUpdate() {
   });
   if (code !== 0) process.stderr.write('ispyx: the update failed (see the npm output above).\n');
   // Start the new copy: npm replaced the files in place, so a fresh process loads them.
-  if (wasRunning) spawnResident();
+  if (wasRunning) { step('Starting ispyx'); spawnResident(); }
   process.exit(code);
 }
 

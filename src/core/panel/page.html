@@ -275,6 +275,12 @@ function render(s){
   var u=s.update;
   show("upd",!!(u&&u.available));
   if(u&&u.available&&!updating)setText("updTxt","Version "+u.latest+" is available.");
+  // while it runs: the installer's current step, or why it gave up; no progress for two minutes means it is stuck
+  if(updating&&u){
+    if(u.error)updateFailed("Update failed: "+u.error);
+    else if(u.step&&u.step!==updStep){updStep=u.step;updAt=Date.now();setText("updTxt",u.step+"\u2026")}
+  }
+  if(updating&&Date.now()-updAt>120000)updateFailed("The update did not finish. Details: update.log in the ispyx data folder.");
 
   show("sPerm",!!(perms&&perms.length));
   if(perms&&perms.length)renderPerms(perms);
@@ -428,13 +434,12 @@ $("log").addEventListener("click",function(){act("openLog")});
 $("showAll").addEventListener("click",function(){expanded=!expanded;if(last&&last.recent)renderRecent(last.recent,last.recentTotal)});
 $("clearAct").addEventListener("click",function(){act("clearRecent").then(poll)});
 // the update quits and restarts ispyx: this window then reports it has quit (macOS opens it again)
-var updating=false;
+// a successful update quits this ispyx (this window reports it has quit; macOS opens the new version)
+var updating=false,updStep="",updAt=0;
 function updateFailed(msg){updating=false;$("updBtn").disabled=false;setText("updTxt",msg)}
 $("updBtn").addEventListener("click",function(){
-  updating=true;$("updBtn").disabled=true;setText("updTxt","Updating, ispyx restarts in a moment…");
+  updating=true;updStep="";updAt=Date.now();$("updBtn").disabled=true;setText("updTxt","Updating, ispyx restarts in a moment…");
   act("update").catch(function(err){updateFailed(err.message)});
-  // a successful update quits this ispyx; still here after two minutes means it did not go through
-  setTimeout(function(){if(updating)updateFailed("The update did not finish. Details: update.log in the ispyx data folder.")},120000);
 });
 $("end").addEventListener("click",function(){
   if(last&&last.platform==="darwin"){act("close");return}

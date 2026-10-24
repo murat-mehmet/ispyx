@@ -76,6 +76,27 @@ quit_app() {
   return 0
 }
 
+# Download $1 to $2. In a terminal curl draws its bar; otherwise (the panel's Update writes update.log, which the
+# panel reads) print "Downloaded N%" every 5 %.
+download() {
+  if [ "$DRY" = 1 ]; then say "    [dry-run] would download $1"; return 0; fi
+  if [ -t 2 ]; then curl -fL --progress-bar -o "$2" "$1"; return; fi
+  total="$(curl -fsSIL "$1" | tr -d '\r' | awk 'tolower($1) == "content-length:" { n = $2 } END { print n + 0 }')"
+  curl -fsSL -o "$2" "$1" &
+  pid=$!
+  shown=-1
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ "$total" -gt 0 ] && [ -f "$2" ]; then
+      pct=$(( $(stat -f %z "$2") * 100 / total ))
+      pct=$(( pct / 5 * 5 ))
+      if [ "$pct" -ne "$shown" ]; then say "    Downloaded $pct%"; shown=$pct; fi
+    fi
+    sleep 1
+  done
+  wait "$pid" || fail "the download failed. Nothing was changed."
+  say "    Downloaded 100%"
+}
+
 # ---- uninstall ------------------------------------------------------------------------------------------------
 if [ "$UNINSTALL" = 1 ]; then
   step "Removing Ispyx"
@@ -104,6 +125,7 @@ MNT=""
 cleanup() {
   [ -n "$MNT" ] && hdiutil detach "$MNT" -quiet >/dev/null 2>&1 || true
   rm -rf "$TMP"
+  [ "$DRY" = 1 ] || rm -f "$DATA_DIR/updating" 2>/dev/null || true # also when the install failed half way
 }
 trap cleanup EXIT INT TERM
 
@@ -130,8 +152,7 @@ else
   step "Downloading Ispyx $LATEST"
   BASE="https://github.com/$REPO/releases/download/$TAG"
   DMG="$TMP/Ispyx-$LATEST.dmg"
-  if [ -t 2 ]; then PROGRESS="--progress-bar"; else PROGRESS="-sS"; fi # no progress bar in update.log
-  run curl -fL $PROGRESS -o "$DMG" "$BASE/Ispyx-$LATEST.dmg"
+  download "$BASE/Ispyx-$LATEST.dmg" "$DMG"
   run curl -fsSL -o "$TMP/sum" "$BASE/Ispyx-$LATEST.dmg.sha256"
   if [ "$DRY" = 0 ]; then
     want="$(awk '{print $1}' "$TMP/sum")"
@@ -171,6 +192,8 @@ SUDO=""
 if [ -d "$DIR" ] && [ ! -w "$DIR" ]; then SUDO="sudo"; say "    $DIR needs your password."; fi
 
 step "Installing to $DEST"
+# quitting for an update: the resident leaves without ending the AI apps' ispyx connections (see core/server.js)
+[ "$DRY" = 1 ] || { mkdir -p "$DATA_DIR" && touch "$DATA_DIR/updating"; } 2>/dev/null || true
 quit_app "$DEST"
 run $SUDO mkdir -p "$DIR"
 # copy next to it first, then swap: a failed copy leaves the old app untouched
@@ -180,6 +203,7 @@ run $SUDO rm -rf "$DEST"
 run $SUDO mv "$DEST.new" "$DEST"
 say "    Installed Ispyx ${NEWVER:-$LATEST}"
 
+rm -f "$DATA_DIR/updating" 2>/dev/null || true
 if [ "$OPEN" = 1 ]; then
   step "Opening Ispyx"
   # it asks for Accessibility and Screen Recording on the first run; updates keep them

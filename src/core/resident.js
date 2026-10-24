@@ -122,6 +122,7 @@ export function panelModel(ctx) {
   const t0 = Date.now();
   // never from tests (fake platform): they must not depend on the network
   const updates = startUpdateCheck({ current: VERSION, enabled: config.updateCheck !== false && w.name !== 'fake' });
+  let running = null; // the update this panel started: its progress() is in the state
   const save = (patch) => {
     try { saveUserConfig(patch); } catch (e) { throw new PanelError(`Could not save the setting: ${e.message}`); }
   };
@@ -138,7 +139,7 @@ export function panelModel(ctx) {
     passwordSet: safe(() => auth.passwordSet(), false),
     authRequired: !!config.auth,
     denylist: config.denylist.slice(),
-    ...(updates.state() ? { update: updates.state() } : {}),
+    ...(updates.state() ? { update: { ...updates.state(), ...(running ? running.progress() : {}) } } : {}),
   });
   const actions = {
     setEffects: (on) => { scan.enabled = !!on; config.animations = !!on; save({ animations: !!on }); return !!on; },
@@ -170,7 +171,8 @@ export function panelModel(ctx) {
     // the newer release: installs it in a process of its own, which quits and restarts ispyx (this one included)
     update: () => {
       if (!updates.state()?.available) throw new PanelError('This is the newest version.');
-      launchUpdate({ platform: w.name, dataDir: w.dataDir() });
+      if (running && !running.progress().error) return true; // already on its way
+      running = launchUpdate({ platform: w.name, dataDir: w.dataDir() });
       return true;
     },
     checkUpdate: async () => { await updates.check(); return updates.state(); },
