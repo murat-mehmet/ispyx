@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 
 if (process.platform !== 'win32') { console.log('skipped: Windows only'); process.exit(0); }
 process.env.ISPYX_AUTOSTART_VALUE = `IspyxTest${process.pid}`;
-const { Tray, autostart, pumpOnce } = await import('../src/platform/win32/index.js');
+const { Tray, autostart } =await import('../src/platform/win32/index.js');
 
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log('ok   ', name); } catch (e) { failed++; console.log('FAIL ', name, '-', e.message); } };
@@ -24,14 +24,15 @@ try {
   // tray
   let opened = 0;
   const tray = new Tray({ tooltip: 'Ispyx test', onOpen: () => opened++, onQuit: () => {}, getStatus: () => 'test status' });
-  check('NIM_ADD succeeded', () => assert.equal(tray.visible, true));
-  check('NIM_MODIFY (setTooltip)', () => assert.equal(tray.setTooltip('Ispyx test 2'), true));
+  const ready = await tray.ready;
   await new Promise((r) => setTimeout(r, 300));
-  pumpOnce();
-  check('icon rect (informational)', () => { const r = tray.rect(); console.log('     rect', JSON.stringify(r)); });
-  check('re-add on TaskbarCreated path', () => assert.equal(tray._add(), false)); // already present: NIM_ADD fails, no throw
+  check('worker thread created the window', () => assert.equal(ready, true));
+  check('NIM_ADD succeeded', () => assert.equal(tray.visible, true));
+  check('setTooltip', () => assert.equal(tray.setTooltip('Ispyx test 2'), true));
+  check('icon is in the notification area', () => { const r = tray.rect(); console.log('     rect', JSON.stringify(r)); assert.ok(r && r.right > r.left); });
   tray.destroy();
   check('destroyed', () => assert.equal(tray.setTooltip('x'), false));
+  check('icon removed', () => assert.equal(tray.rect(), null));
 } finally {
   try { autostart.set(false); } catch { /* nothing left to remove */ }
 }
