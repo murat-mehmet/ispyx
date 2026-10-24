@@ -125,7 +125,7 @@ layer.destroy()                           // hide and free
 Other platforms may lack these; callers must feature-test (`if (platform.Tray)`).
 
 - `Tray({ tooltip, onOpen, onQuit, getStatus })`: notification-area eye icon on the shared message pump. Menu: status line
-  (from `getStatus()`, refreshed on each open), Open (default; also left click), "Open at Windows start" (checkable),
+  (from `getStatus()`, refreshed on each open), Open (default; also left click),
   Quit. Methods: `setTooltip(s)`, `destroy()`. Re-adds itself when Explorer restarts. Callbacks never throw into the host.
 - `autostart` `{ get(), set(on), command() }`: per-user HKCU Run entry `Ispyx` that starts `src/server.js` hidden
   via `wscript.exe` + `%APPDATA%\ispyx\start.vbs`. `ISPYX_AUTOSTART_VALUE` overrides the value name (tests).

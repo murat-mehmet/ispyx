@@ -53,6 +53,7 @@ export async function startPanel({ getState, actions, port = 0 }) {
     req.on('error', reject);
   });
 
+  let iconPng = null;
   const server = http.createServer(async (req, res) => {
     try {
       if (!hostOk(req.headers.host)) return deny(res);
@@ -70,6 +71,13 @@ export async function startPanel({ getState, actions, port = 0 }) {
 
       if (req.method === 'GET' && url.pathname === '/') {
         return send(res, 200, await readFile(PAGE), 'text/html; charset=utf-8');
+      }
+      if (req.method === 'GET' && url.pathname === '/icon.png') { // the app icon, same as the tray and the macOS app
+        iconPng ??= (async () => {
+          const [{ renderIcon }, { encodePng }] = await Promise.all([import('../../effects/appicon.js'), import('../image.js')]);
+          return encodePng(renderIcon(128, { tight: true }), 128, 128);
+        })();
+        return send(res, 200, await iconPng, 'image/png');
       }
       if (req.method === 'GET' && url.pathname === '/api/state') {
         const s = { ...(await getState()) };

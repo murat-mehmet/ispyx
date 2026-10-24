@@ -4,7 +4,6 @@
 // plus PostMessageW to the window (in), because a thread blocked in GetMessageW cannot run its own JS events.
 import koffi from 'koffi';
 import { workerData, parentPort } from 'node:worker_threads';
-import { autostart } from './autostart.js';
 
 const user32 = koffi.load('user32.dll');
 const gdi32 = koffi.load('gdi32.dll');
@@ -66,8 +65,8 @@ const NIM_ADD = 0, NIM_MODIFY = 1, NIM_DELETE = 2;
 const NIF_MESSAGE = 1, NIF_ICON = 2, NIF_TIP = 4;
 const WM_APP_TRAY = 0x8001, WM_APP_DESTROY = 0x8002, WM_APP_TIP = 0x8003;
 const WM_LBUTTONUP = 0x202, WM_RBUTTONUP = 0x205, WM_CONTEXTMENU = 0x7b, WM_NULL = 0;
-const ID_OPEN = 1, ID_AUTOSTART = 2, ID_QUIT = 3;
-const MF_GRAYED = 1, MF_CHECKED = 8, MF_SEPARATOR = 0x800;
+const ID_OPEN = 1, ID_QUIT = 3;
+const MF_GRAYED = 1, MF_SEPARATOR = 0x800;
 const TPM_RIGHTBUTTON = 2, TPM_NONOTIFY = 0x80, TPM_RETURNCMD = 0x100, TPM_BOTTOMALIGN = 0x20;
 
 function createEyeIcon() {
@@ -110,13 +109,11 @@ function add() {
 
 function menu() {
   const status = readText(STATUS_AT, 0);
-  const on = autostart.get();
   const m = f.CreatePopupMenu();
   if (!m) return;
   try {
     if (status) f.AppendMenuW(m, MF_GRAYED, 0, status.replace(/\s+/g, ' ').slice(0, 100));
     f.AppendMenuW(m, 0, ID_OPEN, 'Open');
-    f.AppendMenuW(m, on ? MF_CHECKED : 0, ID_AUTOSTART, 'Open at Windows start');
     f.AppendMenuW(m, MF_SEPARATOR, 0, null);
     f.AppendMenuW(m, 0, ID_QUIT, 'Quit');
     f.SetMenuDefaultItem(m, ID_OPEN, 0);
@@ -127,7 +124,6 @@ function menu() {
     f.PostMessageW(hwnd, WM_NULL, 0, 0);
     if (cmd === ID_OPEN) send({ type: 'open' });
     else if (cmd === ID_QUIT) send({ type: 'quit' });
-    else if (cmd === ID_AUTOSTART) { try { autostart.set(!on); } catch { /* registry not writable */ } }
   } finally {
     f.DestroyMenu(m);
   }
