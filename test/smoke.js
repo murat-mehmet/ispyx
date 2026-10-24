@@ -31,8 +31,8 @@ function launch(extraEnv = {}) {
   const client = new Client({ name: 'smoke', version: '1' });
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [path.join(ROOT, 'src', 'server.js')],
-    env: { ...process.env, WIN_INPUT_AUTH: '0', WIN_INPUT_LOG: LOG, ...extraEnv },
+    args: [path.join(ROOT, 'src', 'server.js'), 'mcp'],
+    env: { ...process.env, ISPYX_IDLE_EXIT_MS: '4000', WIN_INPUT_AUTH: '0', WIN_INPUT_LOG: LOG, ...extraEnv },
   });
   return client.connect(transport).then(() => client);
 }

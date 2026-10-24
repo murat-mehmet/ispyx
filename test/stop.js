@@ -24,8 +24,8 @@ const notepads = () => w.listWindows().filter((x) => x.process === 'notepad.exe'
 const client = new Client({ name: 'stop-test', version: '1' });
 await client.connect(new StdioClientTransport({
   command: process.execPath,
-  args: [path.join(ROOT, 'src', 'server.js')],
-  env: { ...process.env, WIN_INPUT_STOP_CHORD: 'alt+f24', WIN_INPUT_AUTH: '0', WIN_INPUT_LOG: path.join(os.tmpdir(), `win-input-mcp-stop-${Date.now()}.jsonl`) },
+  args: [path.join(ROOT, 'src', 'server.js'), 'mcp'],
+  env: { ...process.env, ISPYX_IDLE_EXIT_MS: '4000', WIN_INPUT_STOP_CHORD: 'alt+f24', WIN_INPUT_AUTH: '0', WIN_INPUT_LOG: path.join(os.tmpdir(), `win-input-mcp-stop-${Date.now()}.jsonl`) },
 }));
 const call = async (name, args = {}) => {
   const r = await client.callTool({ name, arguments: args });
@@ -102,8 +102,8 @@ try {
 {
   const c2 = new Client({ name: 'banner-test', version: '1' });
   await c2.connect(new StdioClientTransport({
-    command: process.execPath, args: [path.join(ROOT, 'src', 'server.js')],
-    env: { ...process.env, WIN_INPUT_STOP_CHORD: 'alt+f24', WIN_INPUT_AUTH: '0', WIN_INPUT_LOG: path.join(os.tmpdir(), `win-input-mcp-banner-${Date.now()}.jsonl`) },
+    command: process.execPath, args: [path.join(ROOT, 'src', 'server.js'), 'mcp'],
+    env: { ...process.env, ISPYX_IDLE_EXIT_MS: '4000', WIN_INPUT_STOP_CHORD: 'alt+f24', WIN_INPUT_AUTH: '0', WIN_INPUT_LOG: path.join(os.tmpdir(), `win-input-mcp-banner-${Date.now()}.jsonl`) },
   }));
   const p = c2.callTool({ name: 'wait', arguments: { ms: 800 } });
   await sleep(300);

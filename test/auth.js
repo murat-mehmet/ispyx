@@ -31,8 +31,8 @@ const dialogOpen = () => execFileSync('powershell.exe', ['-NoProfile', '-STA', '
 async function launch() {
   const c = new Client({ name: 'auth-test', version: '1' });
   await c.connect(new StdioClientTransport({
-    command: process.execPath, args: [path.join(ROOT, 'src', 'server.js')],
-    env: { ...process.env, WIN_INPUT_AUTH: '1', WIN_INPUT_AUTH_FILE: FILE, WIN_INPUT_OVERLAY: '0', WIN_INPUT_STOP_CHORD: 'alt+f24', WIN_INPUT_LOG: path.join(os.tmpdir(), `win-input-mcp-auth-${Date.now()}.jsonl`) },
+    command: process.execPath, args: [path.join(ROOT, 'src', 'server.js'), 'mcp'],
+    env: { ...process.env, ISPYX_IDLE_EXIT_MS: '4000', WIN_INPUT_AUTH: '1', WIN_INPUT_AUTH_FILE: FILE, WIN_INPUT_OVERLAY: '0', WIN_INPUT_STOP_CHORD: 'alt+f24', WIN_INPUT_LOG: path.join(os.tmpdir(), `win-input-mcp-auth-${Date.now()}.jsonl`) },
   }));
   return c;
 }

@@ -17,7 +17,7 @@ A local desktop-control [MCP](https://modelcontextprotocol.io) server. It lets a
   - Refuses to type into **password fields**.
   - An optional **password gate** that asks you before the first tool call.
   - An action log of everything the server did.
-  - **Single shared instance:** many MCP clients can start ispyx, but only one process does the work, so there is one stop key, one banner and one unlock state.
+  - **Single resident app:** on Windows one background process (`ispyx --resident`, tray icon) does the work and every MCP client talks to it through a thin `ispyx mcp` process, so there is one stop key, one banner and one unlock state.
 
 ## Install and run
 
@@ -43,6 +43,17 @@ Claude Desktop and other MCP clients (JSON form; on Windows some clients need `c
 ```
 
 Requires Node.js 22 or newer.
+
+### Windows: the resident app
+
+On Windows ispyx is a single resident app, like `Ispyx.app` on macOS:
+
+- `ispyx` (in a console, or from a shortcut) starts the resident app hidden in the background if it is not running, opens its panel and exits.
+- `ispyx --resident` is the resident itself (tray icon, effects, stop key). A second one exits at once. It writes no output; errors go to `%APPDATA%\ispyx\ispyx.log`.
+- `ispyx mcp` is the stdio MCP server for your client. It forwards every call to the resident and starts it first if needed. Prefer registering `npx -y ispyx mcp`; an old registration without `mcp` still works (it is detected by the missing console).
+- `ispyx quit` stops the resident (tray menu: Quit).
+
+Details: [src/core/RESIDENT.md](src/core/RESIDENT.md).
 
 macOS (experimental): install `Ispyx.app` instead, which carries its own Node and needs nothing else. See [native/macos/README.md](native/macos/README.md).
 

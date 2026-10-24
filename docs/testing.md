@@ -1,6 +1,6 @@
 # Tests
 
-`npm run ipc-test` (unix-socket election/forwarding/shutdown; prints SKIP where unix sockets are unavailable), `npm run core-test` and `npm run darwin-test` need no desktop. Most other tests drive the real desktop of the machine they run on (Windows only). They use their own `ISPYX_*` (or legacy `WIN_INPUT_*`) settings, so they get their own named pipe and, where a stop key is pressed, their own chord (`alt+f24`); they never interfere with a server you are using.
+`npm run ipc-test` (unix-socket election/forwarding/shutdown; prints SKIP where unix sockets are unavailable), `npm run core-test` and `npm run darwin-test` need no desktop. On Windows the tests talk to the server with `ispyx mcp`, which starts a resident (`--resident`) of its own; they set `ISPYX_IDLE_EXIT_MS` so it leaves a few seconds after the test. Most other tests drive the real desktop of the machine they run on (Windows only). They use their own `ISPYX_*` (or legacy `WIN_INPUT_*`) settings, so they get their own named pipe and, where a stop key is pressed, their own chord (`alt+f24`); they never interfere with a server you are using.
 
 ```
 npm test               # unit checks (PNG, key parsing, password-field detection)
@@ -9,7 +9,8 @@ npm run chrome-test    # Chrome end-to-end: Google search through the server (se
 npm run stop-test      # banner shows, is click-through; the stop key cancels a running tool, a second press within 5 s shuts the server down
 npm run motion-test    # pointer glides along a curve in 300-1000 ms, lands exactly
 npm run typing-test    # typing pace and accuracy
-npm run instances-test # several servers share one worker
+npm run resident-test  # fake platform, no desktop: mcp auto-starts the resident, a second resident exits, kill mid-call, quit
+npm run instances-test # several `ispyx mcp` share one resident; second resident exits; mcp auto-start; quit
 npm run shutdown-test  # shutting down all instances
 npm run auth-test      # the real password window (temp file only)
 npm run instagram-test # new Chrome window, scroll checks, Instagram login page (look only)

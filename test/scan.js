@@ -15,9 +15,9 @@ w.init();
 let failed = 0;
 const check = (n, ok, d = '') => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${d ? '  ' + d : ''}`); if (!ok) failed++; };
 const sleep = w.sleep;
-const env = { ...process.env, WIN_INPUT_AUTH: '0', WIN_INPUT_OVERLAY: '0', WIN_INPUT_ANIMATIONS: '1', WIN_INPUT_STOP_CHORD: 'alt+f24', WIN_INPUT_LOG: path.join(os.tmpdir(), `win-input-mcp-scan-${Date.now()}.jsonl`) };
+const env = { ...process.env, ISPYX_IDLE_EXIT_MS: '4000', WIN_INPUT_AUTH: '0', WIN_INPUT_OVERLAY: '0', WIN_INPUT_ANIMATIONS: '1', WIN_INPUT_STOP_CHORD: 'alt+f24', WIN_INPUT_LOG: path.join(os.tmpdir(), `win-input-mcp-scan-${Date.now()}.jsonl`) };
 const client = new Client({ name: 'scan-test', version: '1' });
-await client.connect(new StdioClientTransport({ command: process.execPath, args: [path.join(ROOT, 'src', 'server.js')], env }));
+await client.connect(new StdioClientTransport({ command: process.execPath, args: [path.join(ROOT, 'src', 'server.js'), 'mcp'], env }));
 const call = async (name, args = {}) => {
   const r = await client.callTool({ name, arguments: args });
   return { isError: !!r.isError, text: r.content.find((c) => c.type === 'text')?.text ?? '' };
