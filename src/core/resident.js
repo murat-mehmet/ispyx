@@ -21,9 +21,10 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const MAX_RECENT = 50;
+const MAX_RECENT = 200; // older calls are only in the action log
 const MAX_LOG = 256 * 1024;
 export const recent = [];
+let totalCalls = 0; // since this resident started
 
 const VERSION = (() => {
   try { return JSON.parse(fs.readFileSync(fileURLToPath(new URL('../../package.json', import.meta.url)), 'utf8')).version; } catch { return '0.0.0'; }
@@ -41,6 +42,7 @@ export function summarize(name, args = {}) {
 }
 
 export function recordCall(name, args) {
+  totalCalls++;
   recent.unshift({ time: Date.now(), tool: name, summary: summarize(name, args) });
   if (recent.length > MAX_RECENT) recent.length = MAX_RECENT;
 }
@@ -118,6 +120,7 @@ export async function startResident(ctx) {
     uptimeMs: Date.now() - t0,
     clients: owner.watchers(),
     recent: recent.slice(),
+    recentTotal: totalCalls,
     stopLabel: guard.stopLabel,
     effectsEnabled: !!scan.enabled,
     passwordSet: safe(() => !!auth.read().hash, false),

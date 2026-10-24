@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const PAGE = fileURLToPath(new URL('./page.html', import.meta.url));
 const COOKIE = 'ispyx_panel';
 // Explicit whitelist; an action is also callable only if the host's `actions` object defines it.
-const ACTIONS = ['quit', 'setAutostart', 'setEffects', 'openLog', 'copy', 'close', 'requestPermission', 'openPermissionSettings', 'showConfigFile'];
+const ACTIONS = ['quit', 'setAutostart', 'setEffects', 'openLog', 'copy', 'close', 'requestPermission', 'openPermissionSettings', 'showConfigFile', 'clearRecent'];
 const BOOL_ACTIONS = new Set(['setAutostart', 'setEffects']);
 const STRING_ACTIONS = new Set(['copy', 'requestPermission', 'openPermissionSettings']); // value must be a short string
 const PERMISSION_IDS = new Set(['accessibility', 'screen-recording']);

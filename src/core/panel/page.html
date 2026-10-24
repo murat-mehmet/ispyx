@@ -53,15 +53,17 @@ pre{flex:1;min-width:0;margin:0;background:var(--fill);border-radius:7px;padding
 .v{color:var(--mute);text-align:right;overflow-wrap:anywhere}
 .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
 .tags span{background:var(--fill);border-radius:999px;padding:1px 9px;font-size:12px}
-ul{list-style:none;margin:0;padding:0;max-height:220px;overflow-y:auto}
-li{padding:8px 14px;border-top:1px solid var(--line);display:flex;gap:10px}
+ul{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+ul.open{max-height:320px;overflow-y:auto;overscroll-behavior:contain}
+li{padding:6px 14px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:baseline}
 li:first-child{border-top:0}
-ul{border-top:1px solid var(--line)}
 #rClients[hidden]+ul{border-top:0}
-li .t{color:var(--mute);font-size:11px;flex:none;width:62px;padding-top:1px;font-variant-numeric:tabular-nums}
-li .m{min-width:0}
+li .t{color:var(--mute);font-size:11px;flex:none;width:62px;font-variant-numeric:tabular-nums}
+li .m{min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 li .tool{font-weight:600}
-li .s{color:var(--mute);font-size:12px;overflow-wrap:anywhere}
+li .n{color:var(--mute);font-weight:400}
+li .s{color:var(--mute);font-size:12px;margin-left:6px}
+.more{display:flex;justify-content:space-between;padding:7px 14px;border-top:1px solid var(--line)}
 .empty{color:var(--mute);padding:11px 14px}
 footer{display:flex;justify-content:space-between;align-items:center;gap:10px;padding-top:2px}
 button.link{border:0;background:none;box-shadow:none;color:var(--mute);padding:0;text-decoration:underline}
@@ -116,10 +118,11 @@ button.link:hover{background:none;color:var(--fg)}
 </section>
 
 <section id="sAct" hidden>
-  <h2>Activity</h2>
+  <h2 id="hAct">Activity</h2>
   <div class="card">
     <div class="item line" id="rClients" hidden><span>AI clients</span><span class="v" id="clients"></span></div>
     <ul id="recent" hidden></ul>
+    <div class="more" id="more" hidden><button type="button" class="link" id="showAll"></button><button type="button" class="link" id="clearAct">Clear</button></div>
   </div>
 </section>
 
@@ -187,16 +190,35 @@ function renderPerms(list){
   });
 }
 
-function renderRecent(r){
-  var ul=$("recent");ul.textContent="";
-  if(!r.length){var li=el("li","empty","No activity yet.");ul.appendChild(li);return}
+var COLLAPSED=6,expanded=false;
+// newest first; consecutive calls of the same tool become one row ("move x40")
+function groupRecent(r){
+  var out=[];
   r.forEach(function(x){
+    var g=out[out.length-1];
+    if(g&&g.tool===x.tool)g.n++;else out.push({tool:x.tool,time:x.time,summary:x.summary,n:1});
+  });
+  return out;
+}
+function renderRecent(r,total){
+  var ul=$("recent"),groups=groupRecent(r),shown=expanded?groups:groups.slice(0,COLLAPSED);
+  var oldTop=ul.scrollTop,oldH=ul.scrollHeight;
+  ul.textContent="";ul.className=expanded?"open":"";
+  if(!groups.length){ul.appendChild(el("li","empty","No activity yet."))}
+  shown.forEach(function(x){
     var li=el("li"),m=el("div","m");
     li.appendChild(el("span","t",x.time?new Date(x.time).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"}):""));
-    m.appendChild(el("div","tool",x.tool));
-    if(x.summary)m.appendChild(el("div","s",x.summary));
+    m.appendChild(el("span","tool",x.tool));
+    if(x.n>1)m.appendChild(el("span","n"," ×"+x.n));
+    if(x.summary&&x.n===1)m.appendChild(el("span","s",x.summary));
     li.appendChild(m);ul.appendChild(li);
   });
+  if(expanded&&oldTop>0)ul.scrollTop=oldTop+(ul.scrollHeight-oldH); // keep the row under the cursor still while new ones arrive on top
+  var more=groups.length>COLLAPSED;
+  show("more",groups.length>0);
+  $("showAll").hidden=!more&&!expanded;
+  $("showAll").textContent=expanded?"Show less":"Show all ("+r.length+")";
+  $("hAct").textContent=typeof total==="number"&&total>r.length?"Activity · "+total+" actions":"Activity";
 }
 
 function setText(id,t){if($(id).textContent!==t)$(id).textContent=t}
@@ -245,7 +267,8 @@ function render(s){
   var hasClients=typeof s.clients==="number",hasRecent=Array.isArray(s.recent);
   show("sAct",hasClients||hasRecent);show("rClients",hasClients);show("recent",hasRecent);
   if(hasClients)setText("clients",String(s.clients));
-  if(hasRecent)renderRecent(s.recent);
+  show("more",false);
+  if(hasRecent)renderRecent(s.recent,s.recentTotal);
 
   var hasPw=typeof s.passwordSet==="boolean",hasDeny=Array.isArray(s.denylist);
   show("sSafe",hasPw||hasDeny);show("rPw",hasPw);show("rDeny",hasDeny);
@@ -279,6 +302,8 @@ $("cmdCopy").addEventListener("click",function(){copyText($("cmd").textContent,t
 $("cfgCopy").addEventListener("click",function(){copyText($("cfg").textContent,this)});
 $("cfgShow").addEventListener("click",function(){act("showConfigFile")});
 $("log").addEventListener("click",function(){act("openLog")});
+$("showAll").addEventListener("click",function(){expanded=!expanded;if(last&&last.recent)renderRecent(last.recent,last.recentTotal)});
+$("clearAct").addEventListener("click",function(){act("clearRecent").then(poll)});
 $("end").addEventListener("click",function(){
   if(last&&last.platform==="darwin"){act("close");return}
   if(!confirm("Quit Ispyx? AI tools lose access until it is reopened."))return;
