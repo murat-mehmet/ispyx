@@ -48,6 +48,7 @@
     "hook-test": "node test/hook-life.js",
     "shutdown-test": "node test/shutdown-all.js",
     "scan-test": "node test/scan.js",
+    "laser-test": "node test/laser.js",
     "radar-multi-test": "node test/radar-multi.js",
     "scan-multi-test": "node test/scan-multi.js",
     "auth-test": "node test/auth.js",

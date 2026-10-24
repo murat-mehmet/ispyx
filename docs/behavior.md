@@ -104,7 +104,7 @@ After `screenshot_screen` / `screenshot_window` the result is returned at once, 
 
 `click` draws expanding rings at the pressed point (green left, cyan right, amber middle; one ring per click of a double/triple click, dark outline so it shows on white). It does not delay the next call; only a screenshot waits for running rings to end, so they never show up in an image.
 
-`drag` marks the start with a ring and leaves a glowing trail behind the pointer (it fades with age and when the button is released, then a ring marks the end). Like `click`, it holds up only screenshots.
+`drag` marks the start with a ring and ends with one. Between them an eye opens beside the drag line (random place along it, random side, as far off as the monitor allows) and fires a thick green beam at the spot just behind the pointer, as if the pointer were running from it; sparks fly off the impact and the beam leaves a scorch that cools from lime to a charred line and is gone about 2 s later. Like `click`, it holds up only screenshots, so a screenshot right after a drag waits for the scorch to fade. Drawing code: `src/effects/laser.js`; check with `node test/laser.js` (frames in `test/out/laser-*.png`).
 
 `move` leaves a short fading trail behind the pointer and a ring where it arrives (no start ring); like `click` and `drag` it holds up only screenshots.
 

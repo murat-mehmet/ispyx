@@ -101,6 +101,15 @@ function playTrail(a, z, button, opts) {
   effects.add(run);
   return stop;
 }
+/** drag: an eye beside the line fires a beam at the pointer's heels (scorch fades after a couple of seconds); the returned function ends it. */
+function playLaser(a, z) {
+  const epoch = guard.epoch;
+  let stop;
+  const stopped = new Promise((r) => { stop = r; });
+  const run = scan.laser({ x: a.sx, y: a.sy }, { x: z.sx, y: z.sy }, stopped, () => guard.epoch !== epoch).finally(() => effects.delete(run));
+  effects.add(run);
+  return stop;
+}
 /** scroll: chevrons beside the pointer while the wheel turns; the returned function ends it. */
 function playWheelCue(p, vert, horiz) {
   const epoch = guard.epoch;
@@ -594,7 +603,8 @@ server.registerTool('drag', {
     await w.sleep(40);
     w.mouseDown(b);
     guard.heldButtons.add(b);
-    const stopTrail = playTrail(a, z2, b);
+    const stopTrail = playTrail(a, z2, b, { line: false }); // start ring and end ring; the beam draws the path
+    const stopLaser = playLaser(a, z2);
     try {
       await w.sleep(40);
       await glide(z2, args, { trail: false });
@@ -603,6 +613,7 @@ server.registerTool('drag', {
       w.mouseUp(b);
       guard.heldButtons.delete(b);
       stopTrail();
+      stopLaser();
     }
   });
   return json({ ok: true, from: { x: a.sx, y: a.sy }, to: { x: z2.sx, y: z2.sy } });

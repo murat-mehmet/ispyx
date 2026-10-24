@@ -2,6 +2,7 @@
 // a glowing green scan line that sweeps the region from top to bottom. Two click-through, per-pixel-alpha windows;
 // pixels are drawn in software into DIB sections, so nothing here depends on GDI+.
 import platform from '../platform/index.js';
+import { LASER_EYE_SIZE, BEAM_WIDTH, BURN_LIFE_MS, placeEye, renderBeam, renderBurn, renderSparks, spawnSparks } from './laser.js';
 
 const clamp = (v, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
 const mix = (a, b, t) => a + (b - a) * t;
@@ -310,7 +311,7 @@ export class ScanAnimation {
    * fading with age. When `stopped` resolves (button released) the trail fades out and rings mark the end.
    * `bounds` {left, top, right, bottom}: where the drag can go. Never throws.
    */
-  async trail(start, bounds, stopped, cancelled = () => false, button = 'left', { marker: showMarker = true, life = TRAIL_LIFE_MS, ring = true } = {}) {
+  async trail(start, bounds, stopped, cancelled = () => false, button = 'left', { marker: showMarker = true, life = TRAIL_LIFE_MS, ring = true, line = true } = {}) {
     if (!this.enabled) return;
     let layer = null;
     let ended = false;
@@ -338,7 +339,7 @@ export class ScanAnimation {
         }
         layer.px.fill(0);
         const fade = endAt ? 1 - clamp((t - endAt) / TRAIL_FADE_MS) : 1;
-        for (let pass = 0; pass < 2; pass++) {
+        for (let pass = 0; pass < (line ? 2 : 0); pass++) {
           for (let k = 1; k < pts.length; k++) {
             const age = (endAt ? Math.min(t, endAt) : t) - pts[k].t;
             const a = clamp(1 - age / life) * fade;
@@ -367,6 +368,94 @@ export class ScanAnimation {
 `);
     } finally {
       layer?.destroy();
+    }
+  }
+
+  /**
+   * drag: an eye opens beside the drag line (random side, random place along it) and fires a thick beam at the spot just
+   * behind the pointer, as if the pointer were running from it; the beam leaves a scorch that fades after a couple of
+   * seconds. Runs until the beam and the scorch are gone. `start`/`end` are desktop pixels. Never throws.
+   */
+  async laser(start, end, stopped, cancelled = () => false) {
+    if (!this.enabled || Math.hypot(end.x - start.x, end.y - start.y) < 80) return;
+    const FIRE = 260, LAG = 130, HOLD = 260, MIN_BEAM = 520, CUT = 180, EYE_CLOSE = 300;
+    let beam = null, eye = null;
+    let ended = false;
+    stopped.then(() => { ended = true; });
+    try {
+      platform.ensurePump();
+      const v = platform.virtualScreen();
+      const mid = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+      const mon = platform.listMonitors().find((q) => mid.x >= q.left && mid.x < q.left + q.width && mid.y >= q.top && mid.y < q.top + q.height);
+      const area = mon ? { x: mon.left, y: mon.top, width: mon.width, height: mon.height } : v;
+      const size = LASER_EYE_SIZE;
+      const ec = placeEye(start, end, area, size);
+      const ex = Math.round(ec.x - size / 2), ey = Math.round(ec.y - size / 2);
+      const pad = 110;
+      const left = Math.max(v.x, Math.floor(Math.min(start.x, end.x, ex) - pad)), top = Math.max(v.y, Math.floor(Math.min(start.y, end.y, ey) - pad));
+      const right = Math.min(v.x + v.width, Math.ceil(Math.max(start.x, end.x, ex + size) + pad)), bottom = Math.min(v.y + v.height, Math.ceil(Math.max(start.y, end.y, ey + size) + pad));
+      beam = new platform.Layer(Math.max(40, right - left), Math.max(40, bottom - top));
+      eye = new platform.Layer(size, size);
+      const samples = [{ x: start.x, y: start.y, t: 0 }]; // where the pointer was, and when
+      const burn = [];
+      let sparks = [];
+      let endAt = 0, cutAt = 0, tau = 0, lastT = 0, lastBurn = 0, last = { x: start.x, y: start.y };
+      const pointAt = (u) => {
+        for (let k = 1; k < samples.length; k++) {
+          if (samples[k].t >= u) {
+            const a = samples[k - 1], b = samples[k];
+            const f = b.t > a.t ? (u - a.t) / (b.t - a.t) : 1;
+            return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f };
+          }
+        }
+        return { x: samples[samples.length - 1].x, y: samples[samples.length - 1].y };
+      };
+      const t0 = performance.now();
+      for (;;) {
+        const tf = performance.now(), t = tf - t0;
+        if (cancelled()) break;
+        if (!endAt) {
+          const c = platform.cursorPos();
+          if (Math.hypot(c.x - samples[samples.length - 1].x, c.y - samples[samples.length - 1].y) >= 1) samples.push({ x: c.x, y: c.y, t });
+          if (ended) { endAt = t; cutAt = Math.max(endAt + HOLD, FIRE + MIN_BEAM); samples.push({ x: samples[samples.length - 1].x, y: samples[samples.length - 1].y, t }); }
+        }
+        const eyeEnd = cutAt ? cutAt + CUT + EYE_CLOSE : Infinity;
+        const firing = t >= FIRE && !(cutAt && t >= cutAt + CUT);
+        const grow = ease(clamp((t - FIRE) / 120));
+        const shrink = cutAt ? 1 - ease(clamp((t - cutAt) / CUT)) : 1;
+        const w = BEAM_WIDTH * grow * shrink;
+        // the beam's end follows the pointer's path about LAG ms behind it, catching up fast from the start point
+        if (t >= FIRE) tau = Math.min(tau + (t - lastT) * 2.2, Math.max(0, t - LAG), samples[samples.length - 1].t);
+        lastT = t;
+        const T = t >= FIRE ? pointAt(tau) : samples[samples.length - 1];
+        const open = t < FIRE ? ease(t / FIRE) : cutAt && t >= cutAt + CUT ? 1 - ease(clamp((t - cutAt - CUT) / EYE_CLOSE)) : 1;
+        // the pupil looks at the beam's end
+        const dx = T.x - ec.x, dy = T.y - ec.y, dl = Math.hypot(dx, dy) || 1;
+        const gx = (dx / dl) * 0.95, gy = (dy / dl) * 0.95;
+        renderEye(eye.px, size, open, gx, gy, t < FIRE ? clamp((t - 70) / (FIRE - 70)) : 1);
+        const pp = pupilPos(size, gx, gy);
+        beam.px.fill(0);
+        if (firing && w >= 1 && Math.hypot(T.x - last.x, T.y - last.y) >= 1) {
+          burn.push({ x: T.x - left, y: T.y - top, t });
+          lastBurn = t;
+          last = { x: T.x, y: T.y };
+          spawnSparks(sparks, T.x - left, T.y - top, ex + pp.x - left, ey + pp.y - top, t);
+        }
+        renderBurn(beam.px, beam.width, beam.height, burn, t);
+        if (firing && w >= 1) renderBeam(beam.px, beam.width, beam.height, ex + pp.x - left, ey + pp.y - top, T.x - left, T.y - top, w, t);
+        sparks = renderSparks(beam.px, beam.width, beam.height, sparks, t);
+        beam.present(left, top, 255);
+        if (t < eyeEnd) eye.present(ex, ey, 255 * open);
+        else if (eye.shown) eye.present(ex, ey, 0, 1);
+        if (t >= eyeEnd && t - lastBurn > BURN_LIFE_MS && !sparks.length) break;
+        await new Promise((r) => setTimeout(r, Math.max(1, 16 - (performance.now() - tf))));
+      }
+    } catch (e) {
+      process.stderr.write(`ispyx: laser effect failed (${e.message})
+`);
+    } finally {
+      beam?.destroy();
+      eye?.destroy();
     }
   }
 
