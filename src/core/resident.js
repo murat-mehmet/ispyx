@@ -66,8 +66,15 @@ export function setupLogging(dir) {
   return { file, write };
 }
 
+const PANEL_IDLE_MS = 120000; // the open page polls every second (a hidden window is throttled to ~1/min); longer than that: gone
+
+/** Shows the panel as an app-style window (no tabs or address bar) when Edge is there, else in the default browser. */
 function openUrl(url) {
-  const c = spawn('cmd.exe', ['/c', 'start', '', url], { windowsHide: true, stdio: 'ignore', detached: true });
+  const edge = [process.env['ProgramFiles(x86)'], process.env.ProgramFiles].filter(Boolean)
+    .map((d) => `${d}\\Microsoft\\Edge\\Application\\msedge.exe`).find((p) => fs.existsSync(p));
+  const c = edge
+    ? spawn(edge, [`--app=${url}`], { windowsHide: false, stdio: 'ignore', detached: true })
+    : spawn('cmd.exe', ['/c', 'start', '', url], { windowsHide: true, stdio: 'ignore', detached: true });
   c.on('error', () => {});
   c.unref();
 }
@@ -103,12 +110,32 @@ export async function startResident(ctx) {
     clearRecent: () => { recent.length = 0; },
   };
 
-  let panel = null;
-  try {
-    const mod = await import('./panel/index.js').catch(() => null);
-    panel = (await mod?.startPanel?.({ getState, actions })) ?? null;
-  } catch (e) { log?.write('error', ['panel failed:', e]); }
-  const openPanel = () => { if (panel?.url) openUrl(panel.url); };
+  // The panel (a loopback web page) exists only while its window is open: started on "Open", closed when the page
+  // stops polling (window closed), so the resident normally holds no listening port.
+  let panel = null, starting = null, lastPoll = 0, panelTimer = null;
+  const closePanel = () => {
+    if (panelTimer) { clearInterval(panelTimer); panelTimer = null; }
+    try { panel?.close(); } catch { /* ignore */ }
+    panel = null;
+  };
+  const openPanel = async () => {
+    try {
+      if (!panel) {
+        starting ??= (async () => {
+          const mod = await import('./panel/index.js').catch(() => null);
+          lastPoll = Date.now();
+          panel = (await mod?.startPanel?.({ getState: () => { lastPoll = Date.now(); return getState(); }, actions })) ?? null;
+          if (panel) {
+            panelTimer = setInterval(() => { if (Date.now() - lastPoll > PANEL_IDLE_MS) closePanel(); }, 5000);
+            panelTimer.unref?.();
+          }
+        })().finally(() => { starting = null; });
+        await starting;
+      }
+      lastPoll = Date.now();
+      if (panel?.url) openUrl(panel.url);
+    } catch (e) { log?.write('error', ['panel failed:', e]); }
+  };
 
   let tray = null;
   try {
@@ -136,11 +163,12 @@ export async function startResident(ctx) {
 
   return {
     panelUrl: () => panel?.url ?? '',
+    openPanel,
     touch: () => { lastActive = Date.now(); },
     stop: () => {
       if (timer) clearInterval(timer);
       try { tray?.destroy(); } catch { /* ignore */ }
-      try { panel?.close(); } catch { /* ignore */ }
+      closePanel();
     },
   };
 }

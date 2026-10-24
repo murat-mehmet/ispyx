@@ -62,7 +62,10 @@ export class Tray {
   }
 
   _refreshStatus() {
-    try { this._setText(STATUS_AT, 0, this.getStatus ? this.getStatus() : ''); } catch { /* no status line text */ }
+    try {
+      const s = this.getStatus ? this.getStatus() : '';
+      this._setText(STATUS_AT, 0, typeof s === 'object' && s ? s.text : s);
+    } catch { /* no status line text */ }
   }
 
   setTooltip(s) {

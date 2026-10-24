@@ -35,7 +35,7 @@ All optional: a missing module is skipped.
 ## Control calls
 
 Over the pipe, names starting with `__` are handled by the resident and never reach tools: `__ping` (`'pong'`),
-`__panel` (panel url, `''` if none), `__quit` (shuts down).
+`__panel` (opens the panel window; it is started on demand and closed again two minutes after its window is gone), `__quit` (shuts down).
 
 ## Environment
 

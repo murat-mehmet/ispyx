@@ -170,7 +170,7 @@ function runTool(name, args) {
 /** Resident control calls (see resident.js header). */
 function control(name) {
   if (name === '__ping') return 'pong';
-  if (name === '__panel') return residentUi?.panelUrl() ?? '';
+  if (name === '__panel') return Promise.resolve(residentUi?.openPanel?.()).then(() => '');
   if (name === '__quit') { setTimeout(shutdownAll, 50); return 'bye'; }
   throw new Error(`Unknown control call ${name}`);
 }

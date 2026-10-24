@@ -40,14 +40,15 @@ export function openUrl(url) {
 /** `ispyx` with a console: start the resident if none runs, open its panel, leave. */
 export async function runLauncher() {
   const pipe = pipeName();
+  const wasRunning = await residentRunning(pipe);
   if (!(await ensureResident(pipe))) {
     process.stderr.write('ispyx: could not start the resident app (see %APPDATA%\\ispyx\\ispyx.log).\n');
     process.exit(1);
   }
-  try {
-    const url = await callOwner(pipe, '__panel', {});
-    if (typeof url === 'string' && url) openUrl(url);
-  } catch { /* no panel: the tray icon is enough */ }
+  // Starting it (login, first click) just puts the icon in the tray; clicking the shortcut again opens the panel.
+  if (wasRunning) {
+    try { await callOwner(pipe, '__panel', {}); } catch { /* no panel: the tray icon is enough */ }
+  }
   process.exit(0);
 }
 
