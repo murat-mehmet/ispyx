@@ -4,6 +4,7 @@ import koffi from 'koffi';
 import w from '../src/platform/index.js';
 import { encodePng, decodePng, toRgbaScaled, cropCapture } from '../src/core/image.js';
 import { parseSequence, insertsContent } from '../src/platform/win32/keys.js';
+import { catmullRom } from '../src/effects/scan.js';
 
 let failed = 0;
 const check = (name, ok, detail = '') => {
@@ -24,6 +25,22 @@ const grid = new Uint8Array(4 * 4 * 4);
 for (let i = 0; i < 16; i++) grid[i * 4] = i;
 const crop = cropCapture({ bits: grid, width: 4, height: 4 }, { x: 1, y: 2, width: 2, height: 2 });
 check('crop a Uint8Array capture', crop.width === 2 && crop.height === 2 && [0, 4, 8, 12].map((o) => crop.bits[o]).join() === '9,10,13,14');
+
+// trail curve between sparse pointer samples
+{
+  const P = (x, y) => ({ x, y });
+  const ends = catmullRom(P(0, 0), P(10, 0), P(20, 10), P(30, 30), 0), ende = catmullRom(P(0, 0), P(10, 0), P(20, 10), P(30, 30), 1);
+  check('trail curve passes through its samples', Math.hypot(ends.x - 10, ends.y) < 1e-9 && Math.hypot(ende.x - 20, ende.y - 10) < 1e-9);
+  // samples on a circle: the curve stays much closer to the arc than the straight chord
+  const c = (deg) => P(500 * Math.cos((deg * Math.PI) / 180), 500 * Math.sin((deg * Math.PI) / 180));
+  const mid = catmullRom(c(0), c(40), c(80), c(120), 0.5);
+  check('trail curve follows an arc', Math.abs(Math.hypot(mid.x, mid.y) - 500) < 3, `radius ${Math.hypot(mid.x, mid.y).toFixed(1)} (chord ${(500 * Math.cos((20 * Math.PI) / 180)).toFixed(1)})`);
+  // left to right and straight back on the same line: no loop past the turning point, no drift off the line
+  const back = Array.from({ length: 11 }, (_, i) => catmullRom(P(0, 300), P(1400, 300), P(1400, 300), P(0, 300), i / 10));
+  const fwd = Array.from({ length: 11 }, (_, i) => catmullRom(P(0, 300), P(700, 300), P(1400, 300), P(0, 300), i / 10));
+  const pts = [...back, ...fwd];
+  check('trail curve does not overshoot a turn back', pts.every((p) => Number.isFinite(p.x) && p.x >= -0.5 && p.x <= 1400.5 && Math.abs(p.y - 300) < 1e-6));
+}
 
 // keys
 check('parse ctrl+shift+t', JSON.stringify(parseSequence('ctrl+shift+t')[0]) === JSON.stringify([0x11, 0x10, 0x54]));

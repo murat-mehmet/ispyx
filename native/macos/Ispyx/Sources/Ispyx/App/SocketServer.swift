@@ -173,6 +173,7 @@ final class SocketServer {
         conn.writeSource = nil
         conn.readSource?.cancel() // its cancel handler closes the fd
         conn.readSource = nil
+        LayerRegistry.shared.destroyOwned(by: conn.fd)
         if notify && clients.isEmpty { onAllClientsGone?() }
     }
 
@@ -230,6 +231,8 @@ final class SocketServer {
         let fn = obj["fn"] as? String ?? ""
         let args = obj["args"] as? [Any] ?? []
         do {
+            LayerRegistry.shared.currentOwner = conn.fd
+            defer { LayerRegistry.shared.currentOwner = -1 }
             let result = try router.call(fn, args)
             resp["ok"] = true
             resp["result"] = result ?? NSNull()

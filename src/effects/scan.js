@@ -260,6 +260,21 @@ function stroke(px, width, height, x0, y0, x1, y1, radius, rgb, alpha) {
   }
 }
 
+/**
+ * Point at u (0..1) between p1 and p2 on a centripetal Catmull-Rom spline through p0..p3. The trail samples the
+ * pointer once a frame, so a fast glide leaves a few points far apart; this draws the curve between them. The
+ * centripetal form never loops or overshoots, also where the pointer turns back.
+ */
+export function catmullRom(p0, p1, p2, p3, u) {
+  const d = (a, b) => Math.max(1e-3, Math.sqrt(Math.hypot(b.x - a.x, b.y - a.y)));
+  const t1 = d(p0, p1), t2 = t1 + d(p1, p2), t3 = t2 + d(p2, p3);
+  const t = t1 + (t2 - t1) * u;
+  const lerp = (a, b, ta, tb) => ({ x: (a.x * (tb - t) + b.x * (t - ta)) / (tb - ta), y: (a.y * (tb - t) + b.y * (t - ta)) / (tb - ta) });
+  const a1 = lerp(p0, p1, 0, t1), a2 = lerp(p1, p2, t1, t2), a3 = lerp(p2, p3, t2, t3);
+  const b1 = lerp(a1, a2, 0, t2), b2 = lerp(a2, a3, t1, t3);
+  return lerp(b1, b2, t1, t2);
+}
+
 /** The start marker of a drag: dark ring, bright ring and a dot. */
 function marker(px, width, height, cx, cy, rgb) {
   for (let y = Math.max(0, Math.floor(cy - 16)); y <= Math.min(height - 1, Math.ceil(cy + 16)); y++) {
@@ -328,9 +343,16 @@ export class ScanAnimation {
             const age = (endAt ? Math.min(t, endAt) : t) - pts[k].t;
             const a = clamp(1 - age / life) * fade;
             if (a <= 0.02) continue;
-            const A = pts[k - 1], B = pts[k];
-            if (pass === 0) stroke(layer.px, layer.width, layer.height, A.x - left, A.y - top, B.x - left, B.y - top, 5.2, [14, 50, 28], a * 0.75);
-            else stroke(layer.px, layer.width, layer.height, A.x - left, A.y - top, B.x - left, B.y - top, 3, k % 6 < 5 ? rgb : [255, 255, 255], a);
+            // the curve through the samples, in pieces of about 12 px
+            const P0 = pts[Math.max(0, k - 2)], P1 = pts[k - 1], P2 = pts[k], P3 = pts[Math.min(pts.length - 1, k + 1)];
+            const pieces = Math.min(24, Math.max(1, Math.ceil(Math.hypot(P2.x - P1.x, P2.y - P1.y) / 12)));
+            let A = P1;
+            for (let s = 1; s <= pieces; s++) {
+              const B = s === pieces ? P2 : catmullRom(P0, P1, P2, P3, s / pieces);
+              if (pass === 0) stroke(layer.px, layer.width, layer.height, A.x - left, A.y - top, B.x - left, B.y - top, 5.2, [14, 50, 28], a * 0.75);
+              else stroke(layer.px, layer.width, layer.height, A.x - left, A.y - top, B.x - left, B.y - top, 3, k % 6 < 5 ? rgb : [255, 255, 255], a);
+              A = B;
+            }
           }
         }
         if (showMarker) marker(layer.px, layer.width, layer.height, start.x - left, start.y - top, rgb);

@@ -18,9 +18,13 @@ final class EffectLayer {
     private let colorSpace: CGColorSpace
     private var lastAlpha: Int = -1
     private var lastFrame = NSRect.zero
+    /// The client connection that made it (destroyed with it) and the last create/present (see the watchdog).
+    let owner: Int32
+    private(set) var lastTouch = Date()
 
-    init(id: Int, width: Int, height: Int) throws {
+    init(id: Int, width: Int, height: Int, owner: Int32) throws {
         self.id = id
+        self.owner = owner
         self.width = width
         self.height = height
         let bytes = width * height * 4
@@ -62,6 +66,7 @@ final class EffectLayer {
 
     /// Coordinates are the contract's logical desktop space (top-left of the primary screen, y down).
     func present(x: Double, y: Double, alpha: Int, h: Int, w: Int, srcY: Int) {
+        lastTouch = Date()
         let sy = max(0, min(height - 1, srcY))
         let ph = max(1, min(height - sy, h))
         let pw = max(1, min(width, w))
@@ -119,6 +124,13 @@ final class LayerRegistry {
     private var layers = [Int: EffectLayer]()
     private var nextId = 1
     private var nextMask = 1
+    private var watchdog: Timer?
+    /// The connection whose request is being handled (set by SocketServer around each call), -1 outside a call.
+    var currentOwner: Int32 = -1
+
+    /// Effects present a frame at least every 33 ms while they run. A layer left alone this long lost its
+    /// layerDestroy (a client that died mid-effect, a dropped message) and would stay on screen for good.
+    static let idleLimit: TimeInterval = 3
 
     func create(width: Int, height: Int) throws -> EffectLayer {
         if width < 1 || height < 1 || width > 16384 || height > 16384 {
@@ -126,9 +138,34 @@ final class LayerRegistry {
         }
         let id = nextId
         nextId += 1
-        let l = try EffectLayer(id: id, width: width, height: height)
+        let l = try EffectLayer(id: id, width: width, height: height, owner: currentOwner)
         layers[id] = l
+        startWatchdog()
         return l
+    }
+
+    private func startWatchdog() {
+        if watchdog != nil { return }
+        let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.sweepIdle() }
+        RunLoop.main.add(t, forMode: .common)
+        watchdog = t
+    }
+
+    private func sweepIdle() {
+        let now = Date()
+        for (id, l) in layers where now.timeIntervalSince(l.lastTouch) > LayerRegistry.idleLimit {
+            NSLog("Ispyx: effect layer \(id) got no frame for \(Int(LayerRegistry.idleLimit)) s, removing it")
+            destroy(id)
+        }
+        if layers.isEmpty {
+            watchdog?.invalidate()
+            watchdog = nil
+        }
+    }
+
+    /// A client connection closed: its effects can never be finished or destroyed by it.
+    func destroyOwned(by owner: Int32) {
+        for (id, l) in layers where l.owner == owner { destroy(id) }
     }
 
     func get(_ id: Int) throws -> EffectLayer {
