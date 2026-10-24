@@ -48,6 +48,11 @@ shapes (`left/top/width/height`, `x/y/width/height`, `{text, formats}`, `{file,w
 1. `swift build` completes; note and fix any compile error (see risk 1).
 2. Launch the app: a menu-bar eye appears, no Dock icon, second launch exits silently.
 3. First run with no permissions: the permissions window opens and updates by itself when switches are flipped.
+   The window is now the shared web page in a WKWebView (`App/PanelWindow.swift`, uncompiled like the rest): check
+   it loads (not the "could not find its page" message), both permission rows flip to allowed after granting, the
+   Copy buttons put the Claude Code command and the Claude Desktop snippet on the clipboard, Show Config File reveals
+   `claude_desktop_config.json`, the open-at-login toggle follows System Settings > Login Items, Close closes,
+   "Open Ispyx..." in the menu bar reopens it, and light/dark mode both look right.
 4. `echo '{"id":1,"fn":"ping","args":[]}' | nc -U ~/Library/Application\ Support/Ispyx/helper.sock` answers `pong`.
 5. `{"fn":"foregroundWindow"}` without Accessibility returns the permission message; with it, a window id.
 6. `listWindows` and `describeWindow` show real titles, process names and point coordinates (check a second monitor).

@@ -92,9 +92,14 @@ Ispyx needs two switches in System Settings > Privacy & Security:
 - **Accessibility**: move the pointer, click, type, read window information.
 - **Screen Recording**: screenshots.
 
-At launch, if one is missing, an onboarding window explains why and has buttons that open the right panes. It
-re-checks every second and closes itself when both are allowed. It also opens when a client call fails because of a
-missing permission, and "Permissions..." in the menu-bar menu opens it any time. The app sends the `permissions`
+At launch, if one is missing, the Ispyx window explains why and has buttons that open the right panes. When it was
+opened because of a missing permission it closes itself once both are allowed. It also opens when a client call fails
+because of a missing permission, and "Open Ispyx..." in the menu-bar menu opens it any time.
+
+The window is the shared page `src/core/panel/page.html` (the same one the Windows app shows) in a `WKWebView`
+(`App/PanelWindow.swift`): no server, no port. `build.sh` copies it to `Contents/Resources/panel/page.html` and
+renders `icon.png` next to it (`make-panel-icon.mjs`). Swift injects `window.ispyx` (`getState()`, `action(name, value)`)
+and supplies the state; see the header of `PanelWindow.swift` for the state shape and the action names. The app sends the `permissions`
 event (`{"event":"permissions","missing":[...]}`) to connected clients whenever the missing set changes.
 
 macOS often needs the app restarted before a newly allowed Screen Recording takes effect. Ad-hoc signed builds get a
@@ -129,7 +134,7 @@ app's main thread; while the password window is open the app answers nothing els
 ```
 Ispyx/Package.swift
 Ispyx/Resources/            Info.plist, Ispyx.entitlements
-Ispyx/Sources/Ispyx/App/    main, AppDelegate, SocketServer, StatusWindow, OverlayService, DialogService, LayerService
+Ispyx/Sources/Ispyx/App/    main, AppDelegate, SocketServer, PanelWindow, OverlayService, DialogService, LayerService
 Ispyx/Sources/Ispyx/Services/  OS services (input, windows, capture, pasteboard, hotkey)
 Ispyx/Sources/Ispyx/Router.swift
 ```

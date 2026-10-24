@@ -6,7 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var server: SocketServer?
     private var statusItem: NSStatusItem?
     private var statusLine: NSMenuItem?
-    private let status = StatusWindowController()
+    private let status = PanelWindowController()
     private var startError: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -110,8 +110,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let missing = missingPermissions()
         if !missing.isEmpty {
             var names = [String]()
-            if StatusWindowController.contains(missing, "access") { names.append("Accessibility") }
-            if StatusWindowController.contains(missing, "screen") { names.append("Screen Recording") }
+            if PanelWindowController.contains(missing, "access") { names.append("Accessibility") }
+            if PanelWindowController.contains(missing, "screen") { names.append("Screen Recording") }
             if names.isEmpty { names = missing }
             return "Needs permission: " + names.joined(separator: ", ")
         }

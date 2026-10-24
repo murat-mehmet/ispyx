@@ -109,6 +109,12 @@ done < <(find "$CORE/node_modules" -type f \( -name '*.node' -o -name '*.dylib' 
 cp "$HERE/launcher/ispyx" "$RES/ispyx"
 chmod 755 "$RES/ispyx"
 
+# ---- 2c. the window's page: the shared panel page plus its icon (loaded from the bundle by a WKWebView) ----
+echo "==> bundling the panel page"
+mkdir -p "$RES/panel"
+cp "$REPO/src/core/panel/page.html" "$RES/panel/page.html"
+"$RES/node/bin/node" "$HERE/make-panel-icon.mjs" "$RES/panel/icon.png"
+
 # ---- 3. code signing ------------------------------------------------------------------------------
 # Every Mach-O is signed on its own, innermost first, then the app. With SIGN_IDENTITY the hardened runtime and a
 # secure timestamp are on (required for notarisation); without it everything is ad-hoc signed for local testing.
