@@ -3,7 +3,7 @@ name: Release
 # Push a tag that matches package.json, e.g. `npm version 1.1.0 && git push --follow-tags`:
 #   - npm: the package Windows users run with `npx -y ispyx` (needs the NPM_TOKEN secret)
 #   - macOS: Ispyx-<version>.dmg, signed and notarised when the Apple secrets are set (see docs/releasing.md)
-#   - a GitHub release with the DMG and the npm tarball
+#   - a GitHub release with the DMG, the npm tarball and the Windows installer script
 on:
   push:
     tags: ['v*']
@@ -146,11 +146,14 @@ jobs:
           merge-multiple: true
       - name: Create the GitHub release
         run: |
+          cp scripts/install.ps1 dist/install.ps1
           {
             echo "## Install"
             echo
-            echo "- **Windows** (Node.js 22+): \`claude mcp add ispyx --scope user -- npx -y ispyx@$VERSION\`"
+            echo "- **Windows**: in PowerShell, \`irm https://github.com/$GITHUB_REPOSITORY/releases/latest/download/install.ps1 | iex\`"
+            echo "  (installs Node.js 22+ if needed and \`ispyx@$VERSION\` from npm; then \`claude mcp add ispyx --scope user -- ispyx mcp\`)."
             echo "- **macOS 13+**: download \`Ispyx-$VERSION.dmg\`, drag Ispyx to Applications, open it and follow its window."
+            echo "- **npx** (any platform with Node.js 22+): \`claude mcp add ispyx --scope user -- npx -y ispyx@$VERSION\`"
             if [ "$SIGNED" != "true" ]; then
               echo
               echo "> This macOS build is not signed with a Developer ID. macOS blocks it on first open:"
