@@ -1,6 +1,6 @@
 # Behaviour details
 
-Detailed notes on how ispyx behaves on Windows. macOS support is in development and experimental: there the stop key is Option+Esc, there is no elevated-window concept, the denylist matches app names case-insensitively (default `1Password`, `Bitwarden`, `KeePassXC`, `Keychain Access`, `Enpass`), and state (password hash, action log, optional `config.json`) lives in `~/Library/Application Support/Ispyx/`. See [native/macos/README.md](../native/macos/README.md). For install and configuration see the [README](../README.md).
+Detailed notes on how ispyx behaves on Windows. On macOS the stop key is Option+Esc, there is no elevated-window concept, the denylist matches app names case-insensitively (default `1Password`, `Bitwarden`, `KeePassXC`, `Keychain Access`, `Enpass`), and state (password hash, action log, optional `config.json`) lives in `~/Library/Application Support/Ispyx/`. See [native/macos/README.md](../native/macos/README.md). For install and configuration see the [README](../README.md).
 
 ## Scope
 

@@ -6,7 +6,7 @@ A local desktop-control [MCP](https://modelcontextprotocol.io) server. It lets a
 
 - Runs on your machine, talks to the MCP client over **stdio**, opens **no network port**.
 - Node 22+, `koffi` for the Windows API, `@modelcontextprotocol/sdk` for MCP.
-- Windows today; macOS is in development and experimental (see [Platform status](#platform-status)).
+- Windows and macOS (see [Platform status](#platform-status)).
 
 ## Features
 
@@ -46,7 +46,7 @@ Claude Desktop and other MCP clients (JSON form; on Windows some clients need `c
 
 Requires Node.js 22 or newer.
 
-macOS (experimental): install `Ispyx.app` instead, which carries its own Node and needs nothing else. See [native/macos/README.md](native/macos/README.md).
+macOS: install `Ispyx.app` instead, which carries its own Node and needs nothing else. See [native/macos/README.md](native/macos/README.md).
 
 ## Configuration
 
@@ -106,7 +106,7 @@ Typical flow: `screenshot_screen`, read coordinates off the image, `click` (with
 | Platform | Status |
 | --- | --- |
 | Windows | Supported. |
-| macOS | In development, experimental. A signed menu-bar app (`native/macos`, `Ispyx.app`) does the OS work and bundles Node and this server; it has not been verified on a real Mac yet. There is no elevation concept; the stop key is Option+Esc. |
+| macOS | Supported, macOS 13 or later (tested on Apple Silicon with macOS 26; the app is universal, Intel Macs are not tested). A menu-bar app (`native/macos`, `Ispyx.app`) does the OS work and bundles Node and this server. There is no elevation concept; the stop key is Option+Esc. |
 | Linux | Not planned yet. |
 
 ## Development
@@ -121,7 +121,7 @@ node src/server.js
 Layout:
 
 - `src/core/` shared, platform independent: MCP server and tools, safety guard, input motion, image encoding, password gate, single-instance IPC.
-- `src/platform/` the platform layer behind `src/platform/index.js`; the contract is in `src/platform/CONTRACT.md`. `win32/` is the Windows implementation (Win32 through `koffi`, PowerShell helpers).
+- `src/platform/` the platform layer behind `src/platform/index.js`; the contract is in `src/platform/CONTRACT.md`. `win32/` is the Windows implementation (Win32 through `koffi`, PowerShell helpers), `darwin/` the macOS one (a client of `Ispyx.app`).
 - `src/effects/` the on-screen animations.
 - `native/macos/` the macOS app (Swift).
 - `src/server.js` is the entry point (`bin`) and only loads `src/core/server.js`.

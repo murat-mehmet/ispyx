@@ -1,7 +1,7 @@
 {
   "name": "ispyx",
   "version": "1.0.0",
-  "description": "Local desktop-control MCP server: lets an AI use your keyboard, mouse and screen (windows, screenshots, clicks, typing, clipboard). stdio only, Windows today.",
+  "description": "Local desktop-control MCP server: lets an AI use your keyboard, mouse and screen (windows, screenshots, clicks, typing, clipboard). stdio only, Windows and macOS.",
   "type": "module",
   "main": "src/server.js",
   "bin": { "ispyx": "src/server.js" },
@@ -12,7 +12,7 @@
     "config.example.json"
   ],
   "engines": { "node": ">=22" },
-  "keywords": ["mcp", "model-context-protocol", "computer-use", "desktop-automation", "windows", "screenshot", "keyboard", "mouse", "claude"],
+  "keywords": ["mcp", "model-context-protocol", "computer-use", "desktop-automation", "windows", "macos", "screenshot", "keyboard", "mouse", "claude"],
   "repository": { "type": "git", "url": "git+https://github.com/murat-mehmet/ispyx.git" },
   "bugs": { "url": "https://github.com/murat-mehmet/ispyx/issues" },
   "homepage": "https://github.com/murat-mehmet/ispyx#readme",

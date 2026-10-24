@@ -5,7 +5,8 @@ window lists, screenshots, the clipboard, the stop hotkey, and the on-screen eff
 The Node side (`src/platform/darwin/`) talks to it over a unix socket; the protocol is in
 `src/platform/darwin/PROTOCOL.md`.
 
-Requires macOS 13 or later; the app is universal (Apple Silicon and Intel). Status: experimental, not yet verified on a real Mac.
+Requires macOS 13 or later; the app is universal (Apple Silicon and Intel). Tested on Apple Silicon with macOS 26;
+Intel Macs are not tested yet.
 
 Ispyx.app also carries everything the MCP server needs (its own Node 22+, the server code and its
 dependencies in `Contents/Resources/`), so users install nothing else.
