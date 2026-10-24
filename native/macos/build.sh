@@ -17,6 +17,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PKG="$HERE/Ispyx"
+REPO="$(cd "$HERE/../.." && pwd)"
 OUT="$HERE/build"
 APP="$OUT/Ispyx.app"
 DMG="$OUT/Ispyx.dmg"
@@ -40,6 +41,11 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/Ispyx" "$APP/Contents/MacOS/Ispyx"
 cp "$PKG/Resources/Info.plist" "$APP/Contents/Info.plist"
+# the app carries the version of the npm package it bundles (APP_VERSION / BUILD_NUMBER override, e.g. in CI)
+APP_VERSION="${APP_VERSION:-$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$REPO/package.json" | head -1)}"
+BUILD_NUMBER="${BUILD_NUMBER:-$APP_VERSION}"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP/Contents/Info.plist"
+echo "    version $APP_VERSION ($BUILD_NUMBER)"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 if [ -f "$PKG/Resources/Ispyx.icns" ]; then
   cp "$PKG/Resources/Ispyx.icns" "$APP/Contents/Resources/Ispyx.icns"
@@ -74,7 +80,6 @@ mkdir -p "$RES/node/bin" "$CORE"
 lipo -create "${NODE_SLICES[@]}" -output "$RES/node/bin/node"
 chmod 755 "$RES/node/bin/node"
 
-REPO="$(cd "$HERE/../.." && pwd)"
 cp -R "$REPO/src" "$CORE/src"
 cp "$REPO/package.json" "$REPO/package-lock.json" "$CORE/"
 # npm runs on the bundled node (the slice native to this Mac)

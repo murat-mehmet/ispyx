@@ -1,0 +1,162 @@
+name: Release
+
+# Push a tag that matches package.json, e.g. `npm version 1.1.0 && git push --follow-tags`:
+#   - npm: the package Windows users run with `npx -y ispyx` (needs the NPM_TOKEN secret)
+#   - macOS: Ispyx-<version>.dmg, signed and notarised when the Apple secrets are set (see docs/releasing.md)
+#   - a GitHub release with the DMG and the npm tarball
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: v
+        name: Tag matches package.json
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          case "$version" in *-*) echo "prerelease=true" ;; *) echo "prerelease=false" ;; esac >> "$GITHUB_OUTPUT"
+      - run: npm ci
+      - name: Syntax check (node --check on every src file)
+        run: find src -name '*.js' -print0 | xargs -0 -n1 node --check
+
+  macos:
+    needs: check
+    runs-on: macos-15
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      HAS_CERT: ${{ secrets.MACOS_CERTIFICATE_P12 != '' }}
+      HAS_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import the Developer ID certificate
+        if: env.HAS_CERT == 'true'
+        env:
+          P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/signing.keychain-db"
+          KCPASS="$(uuidgen)"
+          security create-keychain -p "$KCPASS" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KCPASS" "$KC"
+          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KCPASS" "$KC" > /dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$KC" # notarytool keeps its profile in the default keychain
+          identity="$(security find-identity -v -p codesigning "$KC" | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)"
+          if [ -z "$identity" ]; then echo "::error::No Developer ID Application identity in MACOS_CERTIFICATE_P12"; exit 1; fi
+          echo "SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+      - name: Notarisation credentials
+        if: env.HAS_CERT == 'true' && env.HAS_NOTARY == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          xcrun notarytool store-credentials ispyx-notary --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"
+          echo "NOTARY_PROFILE=ispyx-notary" >> "$GITHUB_ENV"
+      - name: Unsigned build warning
+        if: env.HAS_CERT != 'true'
+        run: |
+          echo "::warning::No MACOS_CERTIFICATE_P12 secret: the app is ad-hoc signed and Gatekeeper will block the download."
+      - name: Build Ispyx.app and the DMG
+        env:
+          APP_VERSION: ${{ env.VERSION }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: native/macos/build.sh
+      - name: Check the app
+        run: |
+          app=native/macos/build/Ispyx.app
+          lipo -archs "$app/Contents/MacOS/Ispyx"
+          /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$app/Contents/Info.plist" | grep -qx "$VERSION"
+          codesign --verify --deep --strict "$app"
+          if [ -n "${NOTARY_PROFILE:-}" ]; then spctl --assess --type execute --verbose "$app"; fi
+          mv native/macos/build/Ispyx.dmg "Ispyx-$VERSION.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg
+          path: Ispyx-${{ env.VERSION }}.dmg
+          if-no-files-found: error
+      - name: Remove the temporary keychain
+        if: always() && env.HAS_CERT == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+
+  npm:
+    needs: check
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      HAS_NPM: ${{ secrets.NPM_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - name: Pack
+        run: npm pack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm
+          path: ispyx-${{ env.VERSION }}.tgz
+          if-no-files-found: error
+      - name: Publish to npm
+        if: env.HAS_NPM == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG: ${{ needs.check.outputs.prerelease == 'true' && 'next' || 'latest' }}
+        run: npm publish "ispyx-$VERSION.tgz" --access public --tag "$TAG"
+      - name: No npm token
+        if: env.HAS_NPM != 'true'
+        run: |
+          echo "::warning::No NPM_TOKEN secret: the package was packed but not published."
+
+  release:
+    needs: [check, macos, npm]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      SIGNED: ${{ secrets.MACOS_CERTIFICATE_P12 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create the GitHub release
+        run: |
+          {
+            echo "## Install"
+            echo
+            echo "- **Windows** (Node.js 22+): \`claude mcp add ispyx --scope user -- npx -y ispyx@$VERSION\`"
+            echo "- **macOS 13+**: download \`Ispyx-$VERSION.dmg\`, drag Ispyx to Applications, open it and follow its window."
+            if [ "$SIGNED" != "true" ]; then
+              echo
+              echo "> This macOS build is not signed with a Developer ID. macOS blocks it on first open:"
+              echo "> right-click Ispyx.app > Open, or run \`xattr -dr com.apple.quarantine /Applications/Ispyx.app\`."
+            fi
+          } > notes.md
+          flags=(--title "ispyx $VERSION" --notes-file notes.md --generate-notes --verify-tag)
+          if [ "${{ needs.check.outputs.prerelease }}" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" dist/* "${flags[@]}"

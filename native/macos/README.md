@@ -13,7 +13,8 @@ dependencies in `Contents/Resources/`), so users install nothing else.
 
 ## Install (users)
 
-1. Drag `Ispyx.app` to `/Applications` and open it. The Ispyx window opens and an eye icon appears in the menu bar.
+1. Download `Ispyx-<version>.dmg` from the [Releases](https://github.com/murat-mehmet/ispyx/releases) page, drag
+   `Ispyx.app` to `/Applications` and open it. The Ispyx window opens and an eye icon appears in the menu bar.
 2. In that window, allow the two permissions: **Accessibility** and **Screen Recording**
    (System Settings > Privacy & Security). Quit and reopen Ispyx after allowing Screen Recording.
 3. Register the MCP server with your client. The window's "Connect to Claude" section has both entries below

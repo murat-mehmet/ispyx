@@ -46,7 +46,7 @@ Claude Desktop and other MCP clients (JSON form; on Windows some clients need `c
 
 Requires Node.js 22 or newer.
 
-macOS: install `Ispyx.app` instead, which carries its own Node and needs nothing else. See [native/macos/README.md](native/macos/README.md).
+macOS: install `Ispyx.app` from the [Releases](https://github.com/murat-mehmet/ispyx/releases) page instead, which carries its own Node and needs nothing else. See [native/macos/README.md](native/macos/README.md).
 
 ## Configuration
 
@@ -126,6 +126,8 @@ Layout:
 - `native/macos/` the macOS app (Swift).
 - `src/server.js` is the entry point (`bin`) and only loads `src/core/server.js`.
 - `test/` tests; most drive the real desktop of the machine they run on.
+
+Releases (npm package and macOS DMG) are made by pushing a version tag, see [docs/releasing.md](docs/releasing.md).
 
 ```
 npm test              # unit checks (no desktop needed for most)
