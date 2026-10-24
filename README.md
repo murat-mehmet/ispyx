@@ -19,7 +19,35 @@ A local desktop-control [MCP](https://modelcontextprotocol.io) server. It lets a
   - An action log of everything the server did.
   - **Single shared instance:** many MCP clients can start ispyx, but only one process does the work, so there is one stop key, one banner and one unlock state.
 
-## Install and run
+## Install on Windows
+
+Open PowerShell (Start menu, type "PowerShell") and paste:
+
+```
+irm https://raw.githubusercontent.com/murat-mehmet/ispyx/master/scripts/install.ps1 | iex
+```
+
+No administrator rights are needed. The script explains each step as it goes. It:
+
+- finds Node.js 22+ or installs it for your user only (winget, or the official zip with a checksum check);
+- installs ispyx with `npm install -g ispyx`;
+- puts an `Ispyx` shortcut on your Desktop, turns on start at login and starts ispyx.
+
+Then it prints the commands to connect your AI app, for Claude Code: `claude mcp add ispyx --scope user -- ispyx mcp`.
+
+**Opening it.** Double-click the `Ispyx` Desktop shortcut or run `ispyx`. ispyx lives in the tray (next to the clock, maybe under the `^` arrow); right-click the icon for its menu (panel, start at login, quit). `ispyx update` updates it. Alt+Esc is the emergency stop.
+
+**Uninstall.** Run the installer again with `-Uninstall` (add `-Purge` to also delete settings and logs):
+
+```
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/murat-mehmet/ispyx/master/scripts/install.ps1))) -Uninstall
+```
+
+**Manual install.** Install Node.js 22+ from [nodejs.org](https://nodejs.org), then `npm i -g ispyx` and run `ispyx`.
+
+Details, options and troubleshooting: [docs/windows-install.md](docs/windows-install.md).
+
+## Install and run (npx, macOS and advanced)
 
 No installation is needed, the client starts it with `npx`.
 
