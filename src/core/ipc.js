@@ -85,6 +85,8 @@ export function listenOwner(name, run) {
       resolve({
         close: () => { srv.close(); for (const s of socks) s.destroy(); },
         clients: () => clients,
+        /** Servers holding a watch connection (resident model: one per connected `ispyx mcp`). */
+        watchers: () => watchers.size,
         /** Tells every other server on this pipe to exit. */
         broadcastShutdown: () => { for (const s of watchers) { try { s.write(JSON.stringify({ shutdown: true }) + '\n'); } catch { /* gone */ } } },
       });

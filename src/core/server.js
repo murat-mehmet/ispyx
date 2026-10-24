@@ -12,15 +12,21 @@ import { curvedPath, ease, randomDuration, typingDelays } from './motion.js';
 import { Auth } from './auth.js';
 import { ScanAnimation, keyLabels } from '../effects/scan.js';
 import { pipeName, listenOwner, callOwner, watchOwner, OwnerGone } from './ipc.js';
+import { resolveMode } from './mode.js';
+import { ensureResident } from './launcher.js';
+import { recordCall, setupLogging, startResident } from './resident.js';
 
 const { parseSequence, insertsContent, Overlay, installStopHotkey } = w;
 
+// Windows: one resident app does the work and `ispyx mcp` forwards to it (see RESIDENT.md). Elsewhere: classic election.
+const mode = resolveMode();
 const config = loadConfig();
 // Only the process that owns the pipe (see ipc.js) does the work; the others forward their tool calls to it.
 let guard, overlay, auth, stopHook = null;
 const scan = new ScanAnimation({ enabled: config.animations });
 let pendingAnim = null; // the screenshot animation in progress: the next queued call waits for it
 let owner = null;
+let residentUi = null;
 const pipe = pipeName();
 
 function initCore() {
@@ -29,11 +35,18 @@ function initCore() {
   overlay = new Overlay({ enabled: config.overlay, stopLabel: guard.stopLabel });
   guard.overlay = overlay;
   // second stop press: order every other ispyx server to exit, then leave
-  guard.onShutdown = () => { owner?.broadcastShutdown(); setTimeout(() => process.exit(0), 300); };
+  guard.onShutdown = shutdownAll;
   auth = new Auth({ enabled: config.auth, ...(config.authFile ? { file: config.authFile } : {}) });
   guard.startWatching();
   if (guard.stopIsDefault) stopHook = installStopHotkey((reason) => guard.trigger(reason)); // default stop chord only (Alt+Esc / Option+Esc); installed while working
   guard.log({ tool: 'server_start', auth: config.auth, denylist: config.denylist, pid: process.pid });
+}
+
+/** Orders every connected server to exit, then leaves (second stop press, tray Quit, `ispyx quit`). */
+function shutdownAll() {
+  residentUi?.stop();
+  owner?.broadcastShutdown();
+  setTimeout(() => process.exit(0), 300);
 }
 
 async function tryBecomeOwner() {
@@ -142,9 +155,11 @@ let chain = Promise.resolve();
 const UNQUEUED = new Set(['wait']);
 /** Runs a tool here. Calls from all Claude instances take turns, so two of them never fight over the pointer. */
 function runTool(name, args) {
+  if (mode === 'resident' && name.startsWith('__')) return control(name);
   const h = handlers.get(name);
   if (!h) throw new Error(`Unknown tool ${name}`);
   const ctx = { epoch: guard.epoch }; // a stop press after this point cancels the call, queued or running
+  if (mode === 'resident') { recordCall(name, args); residentUi?.touch(); }
   const call = () => callContext.run(ctx, () => h(args));
   if (UNQUEUED.has(name)) return call();
   const p = chain.then(call);
@@ -152,7 +167,31 @@ function runTool(name, args) {
   return p;
 }
 
+/** Resident control calls (see resident.js header). */
+function control(name) {
+  if (name === '__ping') return 'pong';
+  if (name === '__panel') return residentUi?.panelUrl() ?? '';
+  if (name === '__quit') { setTimeout(shutdownAll, 50); return 'bye'; }
+  throw new Error(`Unknown control call ${name}`);
+}
+
+const toolError = (text) => ({ isError: true, content: [{ type: 'text', text }] });
+
+/** `ispyx mcp`: every call goes to the resident, which is started first when it is not running. */
+async function forwardToResident(name, args) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await callOwner(pipe, name, args);
+    } catch (e) {
+      if (!(e instanceof OwnerGone)) return toolError(`${e.message} (The resident ispyx app was closed or crashed; the next call starts it again.)`);
+      if (attempt === 0 && !(await ensureResident(pipe))) break;
+    }
+  }
+  return toolError('The ispyx app is not running and could not be started within 10 s. Start it from the Start menu or run "ispyx", then try again (log: %APPDATA%\\ispyx\\ispyx.log).');
+}
+
 async function dispatch(name, args) {
+  if (mode === 'mcp') return forwardToResident(name, args);
   for (let attempt = 0; attempt < 4; attempt++) {
     if (owner) return runTool(name, args);
     try {
@@ -741,14 +780,32 @@ server.registerTool('set_clipboard', {
 
 // ---------------------------------------------------------------- run
 
-await tryBecomeOwner();
-if (!owner) watchOwner(pipe, () => process.exit(0), () => !!owner);
-await server.connect(new StdioServerTransport());
 process.on('exit', () => guard?.releaseAll());
-// When this Claude goes away, an owner that still serves other instances keeps running until the last one is gone.
-process.stdin.on('close', () => {
-  if (!owner || owner.clients() === 0) process.exit(0);
-  const t = setInterval(() => { if (owner.clients() === 0) process.exit(0); }, 2000);
-  t.unref?.();
-  guard.releaseAll();
-});
+if (mode === 'resident') {
+  // the single owner: no stdio, errors go to %APPDATA%\ispyx\ispyx.log; a second resident leaves at once
+  const log = setupLogging(w.dataDir());
+  try {
+    await tryBecomeOwner();
+  } catch (e) {
+    log?.write('fatal', ['start failed:', e]);
+    process.exit(1);
+  }
+  if (!owner) process.exit(0);
+  residentUi = await startResident({ w, config, owner, guard, auth, scan, shutdown: shutdownAll, log });
+} else if (mode === 'mcp') {
+  // thin stdio server: the resident does the work; it orders us to exit on its shutdown (second stop press, Quit)
+  watchOwner(pipe, () => process.exit(0), () => false);
+  await server.connect(new StdioServerTransport());
+  process.stdin.on('close', () => process.exit(0));
+} else {
+  await tryBecomeOwner();
+  if (!owner) watchOwner(pipe, () => process.exit(0), () => !!owner);
+  await server.connect(new StdioServerTransport());
+  // When this Claude goes away, an owner that still serves other instances keeps running until the last one is gone.
+  process.stdin.on('close', () => {
+    if (!owner || owner.clients() === 0) process.exit(0);
+    const t = setInterval(() => { if (owner.clients() === 0) process.exit(0); }, 2000);
+    t.unref?.();
+    guard.releaseAll();
+  });
+}

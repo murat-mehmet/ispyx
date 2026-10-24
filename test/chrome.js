@@ -49,8 +49,8 @@ async function readClipboardAfter(client, hwnd, chord) {
 const client = new Client({ name: 'chrome-test', version: '1' });
 await client.connect(new StdioClientTransport({
   command: process.execPath,
-  args: [path.join(ROOT, 'src', 'server.js')],
-  env: { ...process.env, WIN_INPUT_AUTH: '0', WIN_INPUT_LOG: LOG },
+  args: [path.join(ROOT, 'src', 'server.js'), 'mcp'],
+  env: { ...process.env, ISPYX_IDLE_EXIT_MS: '4000', WIN_INPUT_AUTH: '0', WIN_INPUT_LOG: LOG },
 }));
 
 let hwnd = 0;
