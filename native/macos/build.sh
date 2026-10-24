@@ -45,6 +45,17 @@ cp "$PKG/Resources/Info.plist" "$APP/Contents/Info.plist"
 APP_VERSION="${APP_VERSION:-$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$REPO/package.json" | head -1)}"
 BUILD_NUMBER="${BUILD_NUMBER:-$APP_VERSION}"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP/Contents/Info.plist"
+# Only the released app (Developer ID) is com.ispyx.app. Every other build is "Ispyx Dev", com.ispyx.app.dev: macOS
+# keeps one permission record per bundle id, so a dev build sharing the id would take over the installed app's
+# permissions (they would read "not allowed" there after each restart). BUNDLE_ID overrides.
+case "$SIGN_IDENTITY" in
+  "Developer ID Application:"*) BUNDLE_ID="${BUNDLE_ID:-com.ispyx.app}" ;;
+  *) BUNDLE_ID="${BUNDLE_ID:-com.ispyx.app.dev}" ;;
+esac
+if [ "$BUNDLE_ID" != "com.ispyx.app" ]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" -c "Set :CFBundleName Ispyx Dev" -c "Set :CFBundleDisplayName Ispyx Dev" "$APP/Contents/Info.plist"
+fi
+echo "    bundle id $BUNDLE_ID"
 echo "    version $APP_VERSION ($BUILD_NUMBER)"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 if [ -f "$PKG/Resources/Ispyx.icns" ]; then

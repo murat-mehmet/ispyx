@@ -68,7 +68,8 @@ quit_app() {
   [ "$r" != "$1" ] && say "    Ispyx runs from $r; it is replaced by $1"
   say "    Quitting Ispyx"
   [ "$DRY" = 1 ] && return 0
-  osascript -e "quit app id \"$BUNDLE_ID\"" >/dev/null 2>&1 || true
+  rid="$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$r/Contents/Info.plist" 2>/dev/null || echo "$BUNDLE_ID")" # a dev build is com.ispyx.app.dev
+  osascript -e "quit app id \"$rid\"" >/dev/null 2>&1 || true
   i=0
   while [ -n "$(running_app)" ] && [ $i -lt 50 ]; do sleep 0.2; i=$((i + 1)); done
   [ -z "$(running_app)" ] || fail "Ispyx did not quit. Quit it from the menu bar and run this again."

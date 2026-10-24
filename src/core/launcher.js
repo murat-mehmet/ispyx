@@ -120,7 +120,10 @@ export async function runQuit() {
   // macOS: the app would start its resident again; quitting the app ends it and the forwarders
   useMacAppResident();
   if (process.platform === 'darwin' && (macApp() || process.env.ISPYX_PIPE === macAppPipe())) {
-    spawnSync('osascript', ['-e', `quit app id "${MAC_BUNDLE_ID}"`], { stdio: 'ignore', timeout: 10000 });
+    // inside the app: its own id (a dev build is com.ispyx.app.dev)
+    let id = MAC_BUNDLE_ID;
+    try { id = /<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)</.exec(fs.readFileSync(path.join(macApp(), 'Contents', 'Info.plist'), 'utf8'))?.[1] ?? id; } catch { /* npm copy: the installed app */ }
+    spawnSync('osascript', ['-e', `quit app id "${id}"`], { stdio: 'ignore', timeout: 10000 });
     process.exit(0);
   }
   try { await callOwner(pipeName(), '__quit', {}); } catch { /* not running, or gone before answering */ }
