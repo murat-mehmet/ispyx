@@ -13,13 +13,14 @@ import { Auth } from './auth.js';
 import { ScanAnimation, keyLabels } from '../effects/scan.js';
 import { pipeName, listenOwner, callOwner, watchOwner, OwnerGone } from './ipc.js';
 import { resolveMode } from './mode.js';
-import { ensureResident } from './launcher.js';
+import { ensureResident, useMacAppResident } from './launcher.js';
 import { panelModel, recordCall, setupLogging, startResident } from './resident.js';
 
 const { parseSequence, insertsContent, Overlay, installStopHotkey } = w;
 
 // Windows: one resident app does the work and `ispyx mcp` forwards to it (see RESIDENT.md). Elsewhere: classic election.
-const mode = resolveMode();
+// npm/npx on a Mac with Ispyx.app installed: forward to the app's resident rather than run a second server
+const mode = resolveMode() === 'classic' && useMacAppResident() ? 'mcp' : resolveMode();
 const config = loadConfig();
 // Only the process that owns the pipe (see ipc.js) does the work; the others forward their tool calls to it.
 let guard, overlay, auth, stopHook = null;

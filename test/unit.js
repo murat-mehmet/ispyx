@@ -5,6 +5,8 @@ import w from '../src/platform/index.js';
 import { encodePng, decodePng, toRgbaScaled, cropCapture } from '../src/core/image.js';
 import { parseSequence, insertsContent } from '../src/platform/win32/keys.js';
 import { catmullRom } from '../src/effects/scan.js';
+import { compareVersions } from '../src/core/updates.js';
+import { useMacAppResident } from '../src/core/launcher.js';
 
 let failed = 0;
 const check = (name, ok, detail = '') => {
@@ -41,6 +43,13 @@ check('crop a Uint8Array capture', crop.width === 2 && crop.height === 2 && [0, 
   const pts = [...back, ...fwd];
   check('trail curve does not overshoot a turn back', pts.every((p) => Number.isFinite(p.x) && p.x >= -0.5 && p.x <= 1400.5 && Math.abs(p.y - 300) < 1e-6));
 }
+
+// update check: version order, and npm copies on a Mac only forward to Ispyx.app outside tests
+check('versions compare by number, a release beats its pre-release',
+  compareVersions('1.0.10', '1.0.9') === 1 && compareVersions('1.0.1', '1.0.1') === 0 && compareVersions('v1.0.0', '1.0.1') === -1
+  && compareVersions('1.1.0', '1.1.0-beta.1') === 1 && compareVersions('1.1.0-beta.1', '1.0.9') === 1);
+check('npm copy keeps its own server in tests or with an explicit pipe',
+  !useMacAppResident({ ISPYX_PLATFORM: 'fake' }) && !useMacAppResident({ ISPYX_PIPE: '/tmp/x.sock' }));
 
 // keys
 check('parse ctrl+shift+t', JSON.stringify(parseSequence('ctrl+shift+t')[0]) === JSON.stringify([0x11, 0x10, 0x54]));

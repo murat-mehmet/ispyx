@@ -29,6 +29,7 @@ const DEFAULTS = {
   maxTypeLength: 10000,
   auth: false, // ask for a password (src/auth.js) before the first tool call; env WIN_INPUT_AUTH
   authFile: '', // where the password hash and unlock time live; default %APPDATA%\ispyx\auth.json
+  updateCheck: true, // the resident asks GitHub once a day for a newer release (shown in the panel); env ISPYX_UPDATE_CHECK
 };
 
 /**
@@ -79,6 +80,7 @@ export function loadConfig(source = process.env) {
   if (e('TYPE_SPEED')) cfg.typeSpeed = Number(e('TYPE_SPEED'));
   if (e('OVERLAY')) cfg.overlay = !/^(0|false|no)$/i.test(e('OVERLAY'));
   if (e('ANIMATIONS')) cfg.animations = !/^(0|false|no)$/i.test(e('ANIMATIONS'));
+  if (e('UPDATE_CHECK')) cfg.updateCheck = !/^(0|false|no)$/i.test(e('UPDATE_CHECK'));
   cfg.denylist = cfg.denylist.map((s) => String(s).trim().toLowerCase()).filter(Boolean);
   if (e('LOG')) cfg.logPath = e('LOG');
   cfg.logPath = path.resolve(ROOT, cfg.logPath);

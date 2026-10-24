@@ -3,7 +3,7 @@ name: Release
 # Push a tag that matches package.json, e.g. `npm version 1.1.0 && git push --follow-tags`:
 #   - npm: the package Windows users run with `npx -y ispyx` (trusted publishing, no token)
 #   - macOS: Ispyx-<version>.dmg, signed and notarised when the Apple secrets are set (see docs/releasing.md)
-#   - a GitHub release with the DMG, the npm tarball and the Windows installer script
+#   - a GitHub release with the DMG (+ SHA-256), the npm tarball and the installer scripts (install.ps1, install.sh)
 on:
   push:
     tags: ['v*']
@@ -91,10 +91,14 @@ jobs:
           codesign --verify --deep --strict "$app"
           if [ -n "${NOTARY_PROFILE:-}" ]; then spctl --assess --type execute --verbose "$app"; fi
           mv native/macos/build/Ispyx.dmg "Ispyx-$VERSION.dmg"
+          # scripts/install.sh checks the download against this before it installs anything
+          shasum -a 256 "Ispyx-$VERSION.dmg" > "Ispyx-$VERSION.dmg.sha256"
       - uses: actions/upload-artifact@v4
         with:
           name: dmg
-          path: Ispyx-${{ env.VERSION }}.dmg
+          path: |
+            Ispyx-${{ env.VERSION }}.dmg
+            Ispyx-${{ env.VERSION }}.dmg.sha256
           if-no-files-found: error
       - name: Remove the temporary keychain
         if: always() && env.HAS_CERT == 'true'
@@ -146,13 +150,14 @@ jobs:
           merge-multiple: true
       - name: Create the GitHub release
         run: |
-          cp scripts/install.ps1 dist/install.ps1
+          cp scripts/install.ps1 scripts/install.sh dist/
           {
             echo "## Install"
             echo
             echo "- **Windows**: in PowerShell, \`irm https://github.com/$GITHUB_REPOSITORY/releases/latest/download/install.ps1 | iex\`"
             echo "  (installs Node.js 22+ if needed and \`ispyx@$VERSION\` from npm; then \`claude mcp add ispyx --scope user -- ispyx mcp\`)."
-            echo "- **macOS 13+**: download \`Ispyx-$VERSION.dmg\`, drag Ispyx to Applications, open it and follow its window."
+            echo "- **macOS 13+**: in Terminal, \`curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/latest/download/install.sh | sh\`"
+            echo "  (installs or updates Ispyx.app in /Applications after checking its signature; or download \`Ispyx-$VERSION.dmg\` and drag Ispyx to Applications)."
             echo "- **npx** (any platform with Node.js 22+): \`claude mcp add ispyx --scope user -- npx -y ispyx@$VERSION\`"
             if [ "$SIGNED" != "true" ]; then
               echo

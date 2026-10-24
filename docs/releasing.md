@@ -6,7 +6,8 @@ A release is one tag. `.github/workflows/release.yml` runs on every `v*` tag and
 - publishes the npm package (what Windows users, and anyone using `npx -y ispyx`, run),
 - builds `Ispyx-<version>.dmg` on macOS (universal, carrying the same version), signed and notarised when the
   Apple secrets are set,
-- creates the GitHub release with the DMG, the npm tarball and `scripts/install.ps1` attached. A version with a hyphen (`1.2.0-beta.1`)
+- creates the GitHub release with the DMG (and its `.sha256`, which `scripts/install.sh` checks), the npm tarball,
+  `scripts/install.ps1` and `scripts/install.sh` attached. A version with a hyphen (`1.2.0-beta.1`)
   becomes a pre-release and goes to the npm `next` tag instead of `latest`.
 
 ```sh

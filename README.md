@@ -24,7 +24,17 @@ Uninstall: run the installer with `-Uninstall` (add `-Purge` to also delete sett
 
 ### macOS
 
-Download `Ispyx.app` from the [Releases](https://github.com/murat-mehmet/ispyx/releases) page and open it. Details: [native/macos/README.md](native/macos/README.md).
+Open Terminal and paste:
+
+```
+curl -fsSL https://github.com/murat-mehmet/ispyx/releases/latest/download/install.sh | sh
+```
+
+It downloads the newest `Ispyx.app`, checks it (SHA-256, the developer's signature, notarised) and puts it in `/Applications`, then opens it; allow the two permissions its window asks for. Or download the `.dmg` from the [Releases](https://github.com/murat-mehmet/ispyx/releases) page and drag Ispyx to Applications. The app carries its own Node, nothing else is needed. Uninstall: `... | sh -s -- --uninstall` (add `--purge` for settings and logs). Details: [native/macos/README.md](native/macos/README.md).
+
+### Updating
+
+The panel shows when a newer version is out, with an **Update** button. Or run `ispyx update` (macOS: `/Applications/Ispyx.app/Contents/Resources/ispyx update`, or the install command above again). Windows reinstalls the npm package; macOS replaces the app, which keeps its permissions. Settings and logs stay.
 
 ## Connect your AI app
 
@@ -49,7 +59,7 @@ On macOS use `/Applications/Ispyx.app/Contents/Resources/ispyx` as the command, 
 ## Using it
 
 - **Panel.** Permissions (macOS), recent activity, effects, password, denylist, start at login, the connect command. Opens in its own small window and closes when you close it.
-- **Commands (Windows).** `ispyx` starts the resident app and opens the panel, `ispyx mcp` is the stdio server for an AI app, `ispyx quit` stops it, `ispyx update` installs the latest version and restarts it. Errors go to `%APPDATA%\ispyx\ispyx.log`. Details: [src/core/RESIDENT.md](src/core/RESIDENT.md).
+- **Commands.** `ispyx` starts the resident app and opens the panel, `ispyx mcp` is the stdio server for an AI app, `ispyx quit` stops it, `ispyx update` installs the latest version and restarts it. On macOS they are `/Applications/Ispyx.app/Contents/Resources/ispyx update` / `quit` (the app starts the resident itself). Errors go to `%APPDATA%\ispyx\ispyx.log` (macOS: `~/Library/Application Support/Ispyx/ispyx.log`). Details: [src/core/RESIDENT.md](src/core/RESIDENT.md).
 - **Stop.** **Alt+Esc** (Option+Esc on macOS): one press cancels everything running, a second press within 5 s shuts the server down.
 - **Feedback.** A banner shows while a tool runs (green working, amber cancelled, red stopped). An eye and a scan line show on screenshots, clicks, scrolls and typing get small animations. All of it is click-through and can be turned off in the panel.
 

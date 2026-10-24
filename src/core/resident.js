@@ -22,6 +22,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { saveUserConfig } from './guard.js';
+import { startUpdateCheck, launchUpdate } from './updates.js';
 import { PasswordError } from './auth.js';
 
 /** A refusal whose message goes to the person at the panel. */
@@ -119,6 +120,8 @@ const safe = (fn, dflt) => { try { return fn(); } catch { return dflt; } };
 export function panelModel(ctx) {
   const { w, config, guard, auth, scan, clients } = ctx;
   const t0 = Date.now();
+  // never from tests (fake platform): they must not depend on the network
+  const updates = startUpdateCheck({ current: VERSION, enabled: config.updateCheck !== false && w.name !== 'fake' });
   const save = (patch) => {
     try { saveUserConfig(patch); } catch (e) { throw new PanelError(`Could not save the setting: ${e.message}`); }
   };
@@ -135,6 +138,7 @@ export function panelModel(ctx) {
     passwordSet: safe(() => auth.passwordSet(), false),
     authRequired: !!config.auth,
     denylist: config.denylist.slice(),
+    ...(updates.state() ? { update: updates.state() } : {}),
   });
   const actions = {
     setEffects: (on) => { scan.enabled = !!on; config.animations = !!on; save({ animations: !!on }); return !!on; },
@@ -163,8 +167,15 @@ export function panelModel(ctx) {
       save({ denylist: config.denylist.slice() });
     },
     clearRecent: () => { recent.length = 0; },
+    // the newer release: installs it in a process of its own, which quits and restarts ispyx (this one included)
+    update: () => {
+      if (!updates.state()?.available) throw new PanelError('This is the newest version.');
+      launchUpdate({ platform: w.name, dataDir: w.dataDir() });
+      return true;
+    },
+    checkUpdate: async () => { await updates.check(); return updates.state(); },
   };
-  return { getState, actions };
+  return { getState, actions, stop: () => updates.stop() };
 }
 
 /**

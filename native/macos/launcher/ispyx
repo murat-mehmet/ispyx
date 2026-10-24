@@ -25,9 +25,15 @@ if [ ! -x "$NODE" ] || [ ! -f "$ENTRY" ]; then
   exit 1
 fi
 
+# `ispyx update` / `ispyx quit` are commands; anything else is an MCP client starting the forwarder.
+case "${1:-}" in
+  update|quit) MODE="" ;;
+  *) MODE="mcp" ;;
+esac
+
 # The bundled Node is universal, and macOS picks the slice of the parent: an MCP client running under Rosetta
 # (an x86_64 Node or terminal on an Apple Silicon Mac) would get the Intel slice, emulated. Ask for arm64 there.
 if [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ]; then
-  exec arch -arm64 "$NODE" "$ENTRY" mcp "$@"
+  exec arch -arm64 "$NODE" "$ENTRY" $MODE "$@"
 fi
-exec "$NODE" "$ENTRY" mcp "$@"
+exec "$NODE" "$ENTRY" $MODE "$@"

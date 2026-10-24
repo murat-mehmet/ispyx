@@ -17,6 +17,8 @@ header{display:flex;align-items:center;gap:14px;margin-bottom:18px}
 header img{width:44px;height:44px;flex:none;border-radius:10px}
 h1{font-size:17px;line-height:1.25;margin:0;font-weight:700}
 .sub{color:var(--mute);font-size:12px;margin-top:2px;overflow-wrap:anywhere}
+.upd{display:flex;align-items:center;gap:8px;margin-top:6px;color:var(--fg)}
+.upd button{padding:2px 10px;font-size:12px}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--mute);margin-right:6px;vertical-align:1px}
 .run .dot{background:var(--acc);box-shadow:0 0 0 3px rgba(47,209,107,.22)}
 .warn .dot{background:var(--warn)}
@@ -93,6 +95,7 @@ button.link:hover{background:none;color:var(--fg)}
     <h1 id="head">Ispyx</h1>
     <div class="sub" id="state"><span class="dot"></span><span id="stateTxt">Connecting</span></div>
     <div class="sub" id="meta"></div>
+    <div class="sub upd" id="upd" hidden><span id="updTxt"></span> <button type="button" class="pri" id="updBtn">Update</button></div>
   </div>
 </header>
 <div id="off" hidden>Ispyx has quit. You can close this window.</div>
@@ -269,6 +272,9 @@ function render(s){
   if(typeof s.uptimeMs==="number")meta.push("up "+fmt(s.uptimeMs));
   if(s.pid!=null)meta.push("pid "+s.pid);
   setText("meta",meta.join(" · "));
+  var u=s.update;
+  show("upd",!!(u&&u.available));
+  if(u&&u.available&&!updating)setText("updTxt","Version "+u.latest+" is available.");
 
   show("sPerm",!!(perms&&perms.length));
   if(perms&&perms.length)renderPerms(perms);
@@ -421,6 +427,12 @@ $("cfgShow").addEventListener("click",function(){act("showConfigFile")});
 $("log").addEventListener("click",function(){act("openLog")});
 $("showAll").addEventListener("click",function(){expanded=!expanded;if(last&&last.recent)renderRecent(last.recent,last.recentTotal)});
 $("clearAct").addEventListener("click",function(){act("clearRecent").then(poll)});
+// the update quits and restarts ispyx: this window then reports it has quit (macOS opens it again)
+var updating=false;
+$("updBtn").addEventListener("click",function(){
+  updating=true;$("updBtn").disabled=true;setText("updTxt","Updating, ispyx restarts in a moment…");
+  act("update").catch(function(err){updating=false;$("updBtn").disabled=false;setText("updTxt",err.message)});
+});
 $("end").addEventListener("click",function(){
   if(last&&last.platform==="darwin"){act("close");return}
   if(!confirm("Quit Ispyx? AI tools lose access until it is reopened."))return;

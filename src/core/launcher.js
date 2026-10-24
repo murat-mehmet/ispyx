@@ -1,5 +1,8 @@
 // Starting and reaching the resident app (resident model). No platform import: usable before anything is loaded.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { callOwner, OwnerGone, pipeName } from './ipc.js';
 
@@ -13,12 +16,30 @@ function macApp() {
   return m ? m[1] : null;
 }
 
+const MAC_BUNDLE_ID = 'com.ispyx.app';
+/** Where Ispyx.app's resident listens (macos-entry.js pins it there for the app's own processes). */
+export const macAppPipe = () => path.join(os.homedir(), 'Library', 'Application Support', 'Ispyx', 'ispyx.sock');
+
+/**
+ * ispyx from npm/npx on a Mac with Ispyx.app installed: forward to the app's resident instead of running a second
+ * server of its own (one stop key, one banner, the calls in the panel). Not for tests (ISPYX_PLATFORM) or an explicit
+ * ISPYX_PIPE. Returns true when this process should be the `mcp` forwarder.
+ */
+export function useMacAppResident(env = process.env) {
+  if (process.platform !== 'darwin' || macApp() || env.ISPYX_PLATFORM || env.ISPYX_PIPE) return false;
+  const installed = ['/Applications', path.join(os.homedir(), 'Applications')].some((d) => fs.existsSync(path.join(d, 'Ispyx.app')));
+  if (!installed) return false;
+  env.ISPYX_PIPE = macAppPipe();
+  return true;
+}
+
 /** Starts `ispyx --resident` detached and hidden, with this process's environment (same pipe). Inside Ispyx.app it
  * opens the app instead, which starts the resident itself. */
 export function spawnResident() {
   const app = macApp();
-  const child = app
-    ? spawn('open', ['-g', app, '--args', '--background'], { stdio: 'ignore', detached: true })
+  const forApp = app || (process.platform === 'darwin' && process.env.ISPYX_PIPE === macAppPipe());
+  const child = forApp
+    ? spawn('open', ['-g', ...(app ? [app] : ['-b', MAC_BUNDLE_ID]), '--args', '--background'], { stdio: 'ignore', detached: true })
     : spawn(process.execPath, [ENTRY, '--resident'], { detached: true, windowsHide: true, stdio: 'ignore' });
   child.on('error', () => {});
   child.unref();
@@ -63,11 +84,19 @@ export async function runLauncher() {
   process.exit(0);
 }
 
-/** `ispyx update`: stops the resident (it holds files open), installs the latest package, starts it again if it ran. */
+/**
+ * `ispyx update`. Windows: stops the resident (it holds files open), installs the latest package, starts it again if
+ * it ran. macOS: the app is updated as a whole (it is signed), by scripts/install.sh from the latest release.
+ */
 export async function runUpdate() {
-  if (macApp() || process.platform === 'darwin') {
-    process.stderr.write('ispyx: on macOS update by installing the newest Ispyx.app from the Releases page.\n');
-    process.exit(1);
+  if (process.platform === 'darwin') {
+    const { MAC_INSTALL_URL } = await import('./updates.js');
+    const code = await new Promise((resolve) => {
+      const c = spawn('/bin/sh', ['-c', `curl -fsSL ${MAC_INSTALL_URL} | sh`], { stdio: 'inherit' });
+      c.on('error', () => resolve(1));
+      c.on('exit', (n) => resolve(n ?? 1));
+    });
+    process.exit(code);
   }
   const pipe = pipeName();
   const wasRunning = await residentRunning(pipe);
@@ -88,6 +117,12 @@ export async function runUpdate() {
 
 /** `ispyx quit`: asks the resident to exit; exits 0 either way. */
 export async function runQuit() {
+  // macOS: the app would start its resident again; quitting the app ends it and the forwarders
+  useMacAppResident();
+  if (process.platform === 'darwin' && (macApp() || process.env.ISPYX_PIPE === macAppPipe())) {
+    spawnSync('osascript', ['-e', `quit app id "${MAC_BUNDLE_ID}"`], { stdio: 'ignore', timeout: 10000 });
+    process.exit(0);
+  }
   try { await callOwner(pipeName(), '__quit', {}); } catch { /* not running, or gone before answering */ }
   process.exit(0);
 }

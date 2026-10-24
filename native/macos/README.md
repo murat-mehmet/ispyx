@@ -16,8 +16,11 @@ connection until Ispyx runs again.
 
 ## Install (users)
 
-1. Download `Ispyx-<version>.dmg` from the [Releases](https://github.com/murat-mehmet/ispyx/releases) page, drag
-   `Ispyx.app` to `/Applications` and open it. The Ispyx window opens and an eye icon appears in the menu bar.
+1. In Terminal: `curl -fsSL https://github.com/murat-mehmet/ispyx/releases/latest/download/install.sh | sh`
+   (`scripts/install.sh`). It checks the download (SHA-256, signature of team 4U354YMA8D, notarised), puts
+   `Ispyx.app` in `/Applications` and opens it. Or download `Ispyx-<version>.dmg` from the
+   [Releases](https://github.com/murat-mehmet/ispyx/releases) page and drag `Ispyx.app` to `/Applications`.
+   The Ispyx window opens and an eye icon appears in the menu bar.
 2. In that window, allow the two permissions: **Accessibility** and **Screen Recording**
    (System Settings > Privacy & Security). Quit and reopen Ispyx after allowing Screen Recording.
 3. Register the MCP server with your client. The window's "Connect to Claude" section has both entries below
@@ -51,6 +54,14 @@ The `ispyx` launcher runs the bundled Node on `Contents/Resources/core/src/macos
 is **Option+Esc**. The action log and `config.json` (optional) live in
 `~/Library/Application Support/Ispyx/` (the app bundle is read-only).
 
+
+## Update
+
+The panel shows a newer release (the resident asks GitHub once a day; `updateCheck: false` turns that off) with an
+Update button, which runs the installer. `Contents/Resources/ispyx update` and running the install command again do the
+same. The installer replaces the whole app: it is signed, so nothing inside it can be patched, and because the bundle
+id and team stay the same macOS keeps the permissions. An `ispyx` from npm/npx on this Mac forwards to the app's
+resident when Ispyx.app is installed, so there is still one server.
 ## Build and run (developers)
 
 Building needs a Mac with Xcode (the command line tools alone cannot build the universal binary), `npm` on `PATH`
