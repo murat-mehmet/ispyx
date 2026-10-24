@@ -310,7 +310,7 @@ async function pointMapper(args, entry) {
 
 /**
  * Move the pointer to p like a hand would: a curved path with a smooth speed profile, taking a random
- * 300-1000 ms (config moveMinMs/moveMaxMs, or durationMs).
+ * 300-1000 ms (config moveMinMs/moveMaxMs, or durationMs). While a mouse button is held the path is straight.
  */
 async function glide(p, args = {}, { trail = true, ring = false } = {}) {
   const from = w.cursorPos();
@@ -322,7 +322,10 @@ async function glide(p, args = {}, { trail = true, ring = false } = {}) {
   const stopTrail = trail ? playTrail({ sx: from.x, sy: from.y }, p, 'left', { marker: false, life: 520, ring }) : () => {}; // a ring where it lands only for the move tool (click draws its own)
   try {
   const ms = Math.max(MIN_GLIDE_MS, args.durationMs ?? randomDuration(config.moveMinMs, config.moveMaxMs));
-  const path = curvedPath(from, { x: p.sx, y: p.sy });
+  // with a button held (drag, or mouse_down then move) the pointer draws, so the line must be straight
+  const path = guard.heldButtons.size > 0
+    ? (t) => ({ x: from.x + (p.sx - from.x) * t, y: from.y + (p.sy - from.y) * t })
+    : curvedPath(from, { x: p.sx, y: p.sy });
   const v = w.virtualScreen();
   const t0 = performance.now();
   for (let n = 0; ; n++) {
