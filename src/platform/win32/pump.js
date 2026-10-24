@@ -1,8 +1,8 @@
 // Windows only calls window procedures and low-level hooks while the owning thread pumps messages.
-// Node has no message loop of its own, so one shared timer does it. Two speeds: IDLE_MS while nothing needs
-// quick turnaround (tray icon only), FAST_MS while the keyboard hook or an effect window is alive. A low-level
-// keyboard hook that is serviced every 300 ms would make the user's own typing lag, so anything that installs
-// one must hold the fast pace for as long as it exists.
+// Node has no message loop of its own, so a timer does it, but only while something needs it: the keyboard hook
+// or an effect window. Anything that installs a hook must hold the pump for as long as the hook exists (a
+// low-level hook that is not serviced makes the user's own typing lag). When nothing holds it, polling stops.
+// The tray icon does not use this: it has its own thread (tray-worker.js).
 import koffi from 'koffi';
 
 const user32 = koffi.load('user32.dll');
@@ -12,36 +12,26 @@ const MSG = koffi.struct('PUMP_MSG', {
 const PeekMessageW = user32.func('bool PeekMessageW(_Out_ PUMP_MSG *m, intptr_t h, uint32 min, uint32 max, uint32 remove)');
 const DispatchMessageW = user32.func('intptr_t DispatchMessageW(PUMP_MSG *m)');
 
-const FAST_MS = 10;
-const IDLE_MS = 300;
+const PUMP_MS = 10;
 const DEFAULT_HOLD_MS = 10000;
 
 let timer = null;
-let fastUntil = 0;
+let until = 0;
 
 export function pumpOnce() {
   const m = {};
   for (let i = 0; i < 50 && PeekMessageW(m, 0, 0, 0, 1); i++) DispatchMessageW(m);
 }
 
-let delay = IDLE_MS;
-
 function tick() {
   pumpOnce();
-  delay = Date.now() < fastUntil ? FAST_MS : IDLE_MS;
-  timer = setTimeout(tick, delay);
+  if (Date.now() >= until) { timer = null; return; }
+  timer = setTimeout(tick, PUMP_MS);
   timer.unref();
 }
 
-/**
- * Make sure the pump runs and keep it fast for holdMs (default 10 s, extended by every call). Pass 0 for a
- * caller that is happy with the idle pace (the tray icon).
- */
+/** Run the pump for at least holdMs from now (default 10 s); every call extends it. */
 export function ensurePump(holdMs = DEFAULT_HOLD_MS) {
-  if (holdMs > 0) fastUntil = Math.max(fastUntil, Date.now() + holdMs);
-  if (!timer) return tick();
-  if (holdMs > 0 && delay === IDLE_MS) { // a 300 ms wait is pending: cut it short
-    clearTimeout(timer);
-    tick();
-  }
+  until = Math.max(until, Date.now() + holdMs);
+  if (!timer) tick();
 }

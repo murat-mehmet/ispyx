@@ -24,9 +24,25 @@ export class Tray {
     this._shared = new Int32Array(this._sab);
     this._text = new Uint16Array(this._sab);
     this._setText(TIP_AT, 1, tooltip);
-    this._worker = new Worker(new URL('./tray-worker.js', import.meta.url), { workerData: { sab: this._sab, tooltip } });
+    this.ready = this._start(tooltip);
+    this._refreshStatus();
+    if (getStatus) {
+      this._timer = setInterval(() => this._refreshStatus(), STATUS_REFRESH_MS);
+      this._timer.unref();
+    }
+  }
+
+  async _start(tooltip) {
+    // The same icon as the macOS app (appicon.js), as straight-alpha BGRA for CreateIconIndirect. Imported here
+    // because it pulls in the effects, which import the platform layer that exports this class.
+    const { renderIcon } = await import('../../effects/appicon.js');
+    const rgba = renderIcon(32, { tight: true });
+    const pixels = new Uint8Array(rgba.length);
+    for (let i = 0; i < rgba.length; i += 4) { pixels[i] = rgba[i + 2]; pixels[i + 1] = rgba[i + 1]; pixels[i + 2] = rgba[i]; pixels[i + 3] = rgba[i + 3]; }
+    if (this.destroyed) return false;
+    this._worker = new Worker(new URL('./tray-worker.js', import.meta.url), { workerData: { sab: this._sab, tooltip, pixels } });
     this._worker.unref();
-    this.ready = new Promise((resolve) => {
+    return new Promise((resolve) => {
       this._worker.on('message', (m) => {
         if (m.type === 'ready') { this.hwnd = m.hwnd; resolve(true); }
         else if (m.type === 'visible') this.visible = m.visible;
@@ -37,11 +53,6 @@ export class Tray {
       this._worker.on('error', () => resolve(false));
       this._worker.on('exit', () => { this.visible = false; resolve(false); });
     });
-    this._refreshStatus();
-    if (getStatus) {
-      this._timer = setInterval(() => this._refreshStatus(), STATUS_REFRESH_MS);
-      this._timer.unref();
-    }
   }
 
   _setText(at, lenSlot, s) {
@@ -80,8 +91,10 @@ export class Tray {
     if (this.destroyed) return;
     this.destroyed = true;
     clearInterval(this._timer);
-    if (this.hwnd) PostMessageW(this.hwnd, WM_APP_DESTROY, 0, 0);
-    Atomics.wait(this._shared, 2, 0, 500);
+    if (this.hwnd) {
+      PostMessageW(this.hwnd, WM_APP_DESTROY, 0, 0);
+      Atomics.wait(this._shared, 2, 0, 500);
+    }
     this.visible = false;
   }
 }

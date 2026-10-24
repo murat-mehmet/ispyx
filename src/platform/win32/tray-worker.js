@@ -70,32 +70,6 @@ const ID_OPEN = 1, ID_AUTOSTART = 2, ID_QUIT = 3;
 const MF_GRAYED = 1, MF_CHECKED = 8, MF_SEPARATOR = 0x800;
 const TPM_RIGHTBUTTON = 2, TPM_NONOTIFY = 0x80, TPM_RETURNCMD = 0x100, TPM_BOTTOMALIGN = 0x20;
 
-/** A 32x32 straight-alpha BGRA eye in the colours of the radar eye: white eyeball, green iris, dark pupil, dark rim. */
-function eyePixels(n = 32) {
-  const px = new Uint8Array(n * n * 4);
-  const c = (n - 1) / 2;
-  const put = (i, r, g, b, a) => { px[i] = b; px[i + 1] = g; px[i + 2] = r; px[i + 3] = a; };
-  for (let y = 0; y < n; y++) {
-    for (let x = 0; x < n; x++) {
-      const dx = (x - c) / (n / 2 - 1), dy = (y - c) / (n / 2 - 1);
-      // almond: |dy| below a lens curve of dx
-      const lid = 0.62 * (1 - Math.pow(Math.abs(dx), 1.6));
-      const d = lid - Math.abs(dy); // > 0 inside
-      const i = (y * n + x) * 4;
-      if (d < -0.04) continue;
-      const aa = Math.max(0, Math.min(1, (d + 0.04) / 0.08));
-      if (d < 0.1) { put(i, 22, 60, 36, Math.round(255 * aa)); continue; } // dark rim
-      const r = Math.hypot(x - c, y - c);
-      if (r < 3.4) put(i, 12, 24, 16, 255);              // pupil
-      else if (r < 7.6) put(i, 40, 205, 90, 255);        // iris
-      else if (r < 8.6) put(i, 20, 140, 60, 255);        // iris edge
-      else put(i, 245, 250, 245, 255);                   // eyeball
-      if (r < 7.6 && x - c < -1 && y - c < -1 && Math.hypot(x - (c - 3), y - (c - 3)) < 1.6) put(i, 255, 255, 255, 255); // glint
-    }
-  }
-  return px;
-}
-
 function createEyeIcon() {
   const n = 32;
   const screen = f.GetDC(0);
@@ -103,7 +77,7 @@ function createEyeIcon() {
   const color = f.CreateDIBSection(screen, { biSize: 40, biWidth: n, biHeight: -n, biPlanes: 1, biBitCount: 32, biCompression: 0, biSizeImage: 0, biXPels: 0, biYPels: 0, biClrUsed: 0, biClrImportant: 0, bmiColors: 0 }, 0, out, 0, 0);
   f.ReleaseDC(0, screen);
   if (!color || !out[0]) throw new Error('CreateDIBSection failed');
-  new Uint8Array(koffi.view(out[0], n * n * 4)).set(eyePixels(n));
+  new Uint8Array(koffi.view(out[0], n * n * 4)).set(workerData.pixels);
   const mask = f.CreateBitmap(n, n, 1, 1, null);
   const icon = f.CreateIconIndirect({ fIcon: 1, xHotspot: 0, yHotspot: 0, hbmMask: mask, hbmColor: color });
   f.DeleteObject(color);
