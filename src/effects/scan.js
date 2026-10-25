@@ -391,7 +391,7 @@ export class ScanAnimation {
       const size = LASER_EYE_SIZE;
       const ec = placeEye(start, end, area, size);
       const ex = Math.round(ec.x - size / 2), ey = Math.round(ec.y - size / 2);
-      const pad = 110;
+      const pad = 150;
       const left = Math.max(v.x, Math.floor(Math.min(start.x, end.x, ex) - pad)), top = Math.max(v.y, Math.floor(Math.min(start.y, end.y, ey) - pad));
       const right = Math.min(v.x + v.width, Math.ceil(Math.max(start.x, end.x, ex + size) + pad)), bottom = Math.min(v.y + v.height, Math.ceil(Math.max(start.y, end.y, ey + size) + pad));
       beam = new platform.Layer(Math.max(40, right - left), Math.max(40, bottom - top));
@@ -434,6 +434,9 @@ export class ScanAnimation {
         const gx = (dx / dl) * 0.95, gy = (dy / dl) * 0.95;
         renderEye(eye.px, size, open, gx, gy, t < FIRE ? clamp((t - 70) / (FIRE - 70)) : 1);
         const pp = pupilPos(size, gx, gy);
+        // the eye trembles while it fires (the beam starts at the shaken pupil)
+        const sh = firing ? 4.5 * grow * shrink : 0;
+        const sx = (Math.random() - 0.5) * 2 * sh, sy = (Math.random() - 0.5) * 2 * sh;
         beam.px.fill(0);
         if (firing && w >= 1 && Math.hypot(T.x - last.x, T.y - last.y) >= 1) {
           burn.push({ x: T.x - left, y: T.y - top, t });
@@ -442,10 +445,10 @@ export class ScanAnimation {
           spawnSparks(sparks, T.x - left, T.y - top, ex + pp.x - left, ey + pp.y - top, t);
         }
         renderBurn(beam.px, beam.width, beam.height, burn, t);
-        if (firing && w >= 1) renderBeam(beam.px, beam.width, beam.height, ex + pp.x - left, ey + pp.y - top, T.x - left, T.y - top, w, t);
+        if (firing && w >= 1) renderBeam(beam.px, beam.width, beam.height, ex + sx + pp.x - left, ey + sy + pp.y - top, T.x - left, T.y - top, w, t);
         sparks = renderSparks(beam.px, beam.width, beam.height, sparks, t);
         beam.present(left, top, 255);
-        if (t < eyeEnd) eye.present(ex, ey, 255 * open);
+        if (t < eyeEnd) eye.present(Math.round(ex + sx), Math.round(ey + sy), 255 * open);
         else if (eye.shown) eye.present(ex, ey, 0, 1);
         if (t >= eyeEnd && t - lastBurn > BURN_LIFE_MS && !sparks.length) break;
         await new Promise((r) => setTimeout(r, Math.max(1, 16 - (performance.now() - tf))));

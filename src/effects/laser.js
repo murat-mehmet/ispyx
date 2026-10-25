@@ -8,7 +8,7 @@ const smooth = (t) => t * t * (3 - 2 * t);
 
 export const LASER_EYE_SIZE = 112;
 export const BURN_LIFE_MS = 2000;
-export const BEAM_WIDTH = 15; // half-width in px of the full beam
+export const BEAM_WIDTH = 26; // half-width in px of the full beam
 
 /**
  * Where the eye goes: beside the line a -> b (never on it), at a random place along it and on a random side, as far
@@ -64,7 +64,7 @@ function flare(px, W, H, cx, cy, w, tMs, strength) {
 }
 
 /**
- * The beam from (ax, ay) to (bx, by) with half-width `w` (0 = off): rounded ends, a soft green glow, an emerald body that
+ * The beam from (ax, ay) to (bx, by) with half-width `w` (0 = off): rounded ends and the same width all along, a soft green glow, an emerald body that
  * darkens towards its rim, a white-green core, energy bands running along it, and a flare at each end.
  * `tMs` animates the bands and the spikes.
  */
@@ -82,8 +82,7 @@ export function renderBeam(px, W, H, ax, ay, bx, by, w, tMs) {
       const d = Math.hypot(dx - s * ux, dy - s * uy);
       if (d > w * 3.1) continue;
       const i = (y * W + x) * 4;
-      const along = s / len;
-      const hw = w * (0.78 + 0.22 * smooth(along)); // slightly slimmer at the eye
+      const hw = w; // the same width along its whole length
       const band = 0.86 + 0.14 * Math.sin(s * 0.11 - tMs * 0.045);
       over(px, i, 20, 200, 120, Math.exp(-((d / (hw * 2.3)) ** 2)) * 0.5); // outer glow
       const body = clamp(hw - d + 0.5);
@@ -128,12 +127,12 @@ export function renderBurn(px, W, H, pts, now) {
       const fade = Math.pow(clamp(1 - age / BURN_LIFE_MS), 0.8);
       if (fade <= 0.02) continue;
       const A = pts[k - 1], B = pts[k];
-      if (pass === 0) stroke(px, W, H, A.x, A.y, B.x, B.y, 8, [22, 120, 66], 0.3 * fade);
-      else if (pass === 1) stroke(px, W, H, A.x, A.y, B.x, B.y, 5.4, [10, 16, 13], 0.82 * fade);
+      if (pass === 0) stroke(px, W, H, A.x, A.y, B.x, B.y, 13, [22, 120, 66], 0.3 * fade);
+      else if (pass === 1) stroke(px, W, H, A.x, A.y, B.x, B.y, 9, [10, 16, 13], 0.82 * fade);
       else {
         const heat = clamp(1 - age / 320);
         if (heat <= 0.03) continue;
-        stroke(px, W, H, A.x, A.y, B.x, B.y, 2.2 + 3 * heat, [mix(90, 235, heat), 255, mix(130, 215, heat)], heat * 0.95);
+        stroke(px, W, H, A.x, A.y, B.x, B.y, 3.5 + 5 * heat, [mix(90, 235, heat), 255, mix(130, 215, heat)], heat * 0.95);
       }
     }
   }
