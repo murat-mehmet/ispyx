@@ -44,18 +44,24 @@ function over(px, i, r, g, b, a) {
 function flare(px, W, H, cx, cy, w, tMs, strength) {
   const R = Math.ceil(w * 3.6);
   const rot = tMs * 0.0011;
+  // cos(6 * (angle + rot)) without atan2/cos per pixel: (cos a + i sin a)^6 rotated by 6 * rot
+  const cr = Math.cos(6 * rot), sr = Math.sin(6 * rot);
   for (let y = Math.max(0, Math.floor(cy - R)); y <= Math.min(H - 1, Math.ceil(cy + R)); y++) {
     for (let x = Math.max(0, Math.floor(cx - R)); x <= Math.min(W - 1, Math.ceil(cx + R)); x++) {
       const dx = x + 0.5 - cx, dy = y + 0.5 - cy;
-      const r = Math.hypot(dx, dy);
+      const r = Math.sqrt(dx * dx + dy * dy);
       if (r > R) continue;
       const i = (y * W + x) * 4;
       const halo = Math.exp(-((r / (w * 2.1)) ** 2)) * 0.55 * strength;
       over(px, i, 40, 235, 170, halo);
       const ring = clamp(1 - Math.abs(r - w * 1.9) / 1.6) * 0.55 * strength;
       over(px, i, 170, 255, 220, ring);
-      const ang = Math.atan2(dy, dx);
-      const spike = (Math.max(0, Math.cos(6 * (ang + rot))) ** 22) * Math.exp(-r / (w * 1.5)) * 0.9 * strength;
+      const c1 = r > 0 ? dx / r : 1, s1 = r > 0 ? dy / r : 0;
+      const c2 = c1 * c1 - s1 * s1, s2 = 2 * c1 * s1; // angle x2
+      const c6 = c2 * (c2 * c2 - s2 * s2) - s2 * (2 * c2 * s2), s6 = s2 * (c2 * c2 - s2 * s2) + c2 * (2 * c2 * s2); // x2 * x3 = x6
+      const k = Math.max(0, c6 * cr - s6 * sr);
+      const k2 = k * k, k4 = k2 * k2, k16 = k4 * k4 * k4 * k4; // k^22 = k^16 * k^4 * k^2
+      const spike = k16 * k4 * k2 * Math.exp(-r / (w * 1.5)) * 0.9 * strength;
       over(px, i, 200, 255, 225, spike);
       const core = Math.exp(-((r / (w * 1.05)) ** 2)) * strength;
       over(px, i, 240, 255, 246, core);
@@ -75,18 +81,21 @@ export function renderBeam(px, W, H, ax, ay, bx, by, w, tMs) {
   const pad = Math.ceil(w * 3.2);
   const x0 = Math.max(0, Math.floor(Math.min(ax, bx) - pad)), x1 = Math.min(W - 1, Math.ceil(Math.max(ax, bx) + pad));
   const y0 = Math.max(0, Math.floor(Math.min(ay, by) - pad)), y1 = Math.min(H - 1, Math.ceil(Math.max(ay, by) + pad));
+  const reach2 = (w * 3.1) ** 2;
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
       const dx = x + 0.5 - ax, dy = y + 0.5 - ay;
       const s = clamp(dx * ux + dy * uy, 0, len); // rounded ends: distance to the segment
-      const d = Math.hypot(dx - s * ux, dy - s * uy);
-      if (d > w * 3.1) continue;
+      const ex = dx - s * ux, ey = dy - s * uy;
+      const d2 = ex * ex + ey * ey;
+      if (d2 > reach2) continue; // most of a diagonal beam's box: no square root, nothing drawn
+      const d = Math.sqrt(d2);
       const i = (y * W + x) * 4;
       const hw = w; // the same width along its whole length
-      const band = 0.86 + 0.14 * Math.sin(s * 0.11 - tMs * 0.045);
       over(px, i, 20, 200, 120, Math.exp(-((d / (hw * 2.3)) ** 2)) * 0.5); // outer glow
       const body = clamp(hw - d + 0.5);
       if (body > 0) {
+        const band = 0.86 + 0.14 * Math.sin(s * 0.11 - tMs * 0.045);
         const e = clamp(d / hw);
         const k = e * e; // 0 in the middle, 1 on the rim
         over(px, i, mix(70, 8, k) * band, mix(255, 130, k) * band, mix(150, 80, k) * band, body * 0.97);
@@ -99,19 +108,28 @@ export function renderBeam(px, W, H, ax, ay, bx, by, w, tMs) {
   flare(px, W, H, bx, by, w, tMs + 400, 1);
 }
 
-/** A thick line piece; the stronger alpha wins where pieces overlap (so a burn trail has no beads at its joints). */
-function stroke(px, W, H, x0, y0, x1, y1, radius, rgb, alpha) {
-  const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0)));
-  const R = Math.ceil(radius + 1);
-  for (let s = 0; s <= n; s++) {
-    const cx = x0 + ((x1 - x0) * s) / n, cy = y0 + ((y1 - y0) * s) / n;
-    for (let y = Math.max(0, Math.floor(cy - R)); y <= Math.min(H - 1, Math.ceil(cy + R)); y++) {
-      for (let x = Math.max(0, Math.floor(cx - R)); x <= Math.min(W - 1, Math.ceil(cx + R)); x++) {
-        const a = clamp(radius + 0.5 - Math.hypot(x + 0.5 - cx, y + 0.5 - cy)) * alpha;
-        const i = (y * W + x) * 4;
-        if (a * 255 <= px[i + 3]) continue;
-        px[i] = rgb[2] * a; px[i + 1] = rgb[1] * a; px[i + 2] = rgb[0] * a; px[i + 3] = a * 255;
-      }
+/**
+ * A thick line piece (a capsule); the stronger alpha wins where pieces overlap (so a burn trail has no beads at its
+ * joints). Each pixel of the bounding box is visited once and shaded by its distance to the segment: the burn
+ * redraws every piece every frame, and stamping a disc at each pixel along the line cost ~30x more.
+ */
+export function stroke(px, W, H, x0, y0, x1, y1, radius, rgb, alpha) {
+  const R = radius + 1;
+  const xa = Math.max(0, Math.floor(Math.min(x0, x1) - R)), xb = Math.min(W - 1, Math.ceil(Math.max(x0, x1) + R));
+  const ya = Math.max(0, Math.floor(Math.min(y0, y1) - R)), yb = Math.min(H - 1, Math.ceil(Math.max(y0, y1) + R));
+  const dx = x1 - x0, dy = y1 - y0, len2 = dx * dx + dy * dy;
+  const b = rgb[2], g = rgb[1], r = rgb[0];
+  for (let y = ya; y <= yb; y++) {
+    const py = y + 0.5 - y0;
+    for (let x = xa; x <= xb; x++) {
+      const qx = x + 0.5 - x0;
+      const u = len2 > 0 ? Math.min(1, Math.max(0, (qx * dx + py * dy) / len2)) : 0;
+      const ex = qx - u * dx, ey = py - u * dy;
+      const a = clamp(radius + 0.5 - Math.sqrt(ex * ex + ey * ey)) * alpha;
+      if (a <= 0) continue;
+      const i = (y * W + x) * 4;
+      if (a * 255 <= px[i + 3]) continue;
+      px[i] = b * a; px[i + 1] = g * a; px[i + 2] = r * a; px[i + 3] = a * 255;
     }
   }
 }
