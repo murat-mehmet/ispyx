@@ -2,6 +2,8 @@
 
 # ispyx
 
+<p align="center"><a href="docs/showcase/ispyx-demo.mp4"><img src="docs/showcase/ispyx-demo.gif" alt="ispyx demo: an AI clicks, drags cards between columns, types and scrolls while an eye fires a beam at the pointer" width="720"></a></p>
+
 A local desktop-control [MCP](https://modelcontextprotocol.io) server. It lets an AI assistant use your computer the way a person does: look at the screen, move the mouse, click, drag, scroll, type, press hotkeys and use the clipboard.
 
 - Runs on your machine, talks to the AI app over **stdio**, opens **no network port** (the settings panel only listens while it is open).
