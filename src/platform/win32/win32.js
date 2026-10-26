@@ -8,6 +8,9 @@ const advapi32 = koffi.load('advapi32.dll');
 const dwmapi = koffi.load('dwmapi.dll');
 const ole32 = koffi.load('ole32.dll');
 const winmm = koffi.load('winmm.dll');
+const wtsapi32 = koffi.load('wtsapi32.dll');
+const wtsQuery = wtsapi32.func('bool WTSQuerySessionInformationW(intptr_t server, uint32 session, int cls, _Out_ void **buf, _Out_ uint32_t *len)');
+const wtsFree = wtsapi32.func('void WTSFreeMemory(void *p)');
 const timeBeginPeriod = winmm.func('uint32 timeBeginPeriod(uint32 ms)');
 
 export const RECT = koffi.struct('RECT', { left: 'int32', top: 'int32', right: 'int32', bottom: 'int32' });
@@ -236,12 +239,26 @@ export const rootWindowAt = (x, y) => {
 };
 export const foregroundWindow = () => f.GetForegroundWindow();
 
+// WTSINFOEX_LEVEL1 for the current session: int32 at index 4 is SessionFlags (0 = locked, 1 = unlocked).
+function sessionFlagsLocked() {
+  const out = [null];
+  const len = [0];
+  if (!wtsQuery(0, 0xFFFFFFFF, 25, out, len) || !out[0]) return false;
+  try {
+    return koffi.decode(out[0], koffi.array('int32_t', 5))[4] === 0;
+  } finally {
+    wtsFree(out[0]);
+  }
+}
+
 export function isScreenLocked() {
   // The input desktop cannot be opened while the secure (lock / UAC) desktop is active.
   const d = f.OpenInputDesktop(0, false, 0x100);
   if (!d) return true;
   f.CloseDesktop(d);
-  return false;
+  // The lock screen's cover (clock and widgets, before the sign-in tiles) does not switch desktops, so the
+  // check above passes while it is showing; the session's own lock flag does not have that blind spot.
+  return sessionFlagsLocked();
 }
 
 export function windowDpi(hwnd) {
