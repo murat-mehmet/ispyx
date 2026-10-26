@@ -129,3 +129,9 @@ Other platforms may lack these; callers must feature-test (`if (platform.Tray)`)
   Quit. Methods: `setTooltip(s)`, `destroy()`. Re-adds itself when Explorer restarts. Callbacks never throw into the host.
 - `autostart` `{ get(), set(on), command() }`: per-user HKCU Run entry `Ispyx` that starts `src/server.js` hidden
   via `wscript.exe` + `%APPDATA%\ispyx\start.vbs`. `ISPYX_AUTOSTART_VALUE` overrides the value name (tests).
+- `unlock` (`src/platform/win32/unlock.js`): `{ isEnabled(), checkAccount(), enable({password}), disable(), signal() }`.
+  "Let the AI unlock this PC" (see `docs/unlock-windows.md`). Only ever unlocks the account the resident itself
+  runs as, so `enable` asks for just the password. `enable`/`disable` run an
+  elevated `.ps1` in `native/win32-unlock/provider/` (one UAC prompt each); `signal()` never needs elevation.
+  `checkAccount()` refuses PIN/Microsoft-account and passwordless sign-ins (no replayable secret exists for
+  those). The `unlock` MCP tool (`src/core/server.js`) calls `signal()` then polls `isScreenLocked()`.

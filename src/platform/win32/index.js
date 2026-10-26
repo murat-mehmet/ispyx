@@ -28,4 +28,5 @@ export const dataDir = () => {
 };
 export { Layer, textMask } from './layer.js';
 export { Tray } from './tray.js';
+export * as unlock from './unlock.js';
 export { autostart } from './autostart.js';

@@ -11,8 +11,10 @@
 //   ./panel/index.js     startPanel({ getState, actions }) -> { url, close() }   (local web panel)
 //
 //   getState() -> { version, platform, pid, uptimeMs, clients, recent: [{ time, tool, summary }],
-//                   stopLabel, effectsEnabled, passwordSet, denylist, autostart, connect (win32) }
-//   actions    -> { quit(), setAutostart(bool), setEffects(bool), clearRecent(), showConfigFile() }
+//                   stopLabel, effectsEnabled, passwordSet, denylist, autostart, connect (win32),
+//                   unlockSupported, unlockEnabled (win32 only, when platform.unlock exists) }
+//   actions    -> { quit(), setAutostart(bool), setEffects(bool), clearRecent(), showConfigFile(),
+//                   setUnlock({on, password, current}) (win32 only) }
 //
 // Control calls over the pipe (names start with "__", handled here, never reach the tools):
 //   __ping -> 'pong'      __panel -> panel url ('' if none)      __quit -> 'bye' and the resident shuts down.
@@ -139,6 +141,7 @@ export function panelModel(ctx) {
     passwordSet: safe(() => auth.passwordSet(), false),
     authRequired: !!config.auth,
     denylist: config.denylist.slice(),
+    ...(w.unlock ? { unlockSupported: true, unlockEnabled: safe(() => w.unlock.isEnabled(), false) } : {}),
     ...(updates.state() ? { update: { ...updates.state(), ...(running ? running.progress() : {}) } } : {}),
   });
   const actions = {
@@ -176,6 +179,16 @@ export function panelModel(ctx) {
       return true;
     },
     checkUpdate: async () => { await updates.check(); return updates.state(); },
+    // Turning this on lowers the lock screen's protection, so it asks for the ispyx password when one is set,
+    // same as removeDeny. w.unlock.enable/disable throw a plain message (wrong account type, UAC cancelled, ...).
+    setUnlock: async ({ on, password, current } = {}) => {
+      if (!w.unlock) throw new PanelError('Not available on this platform.');
+      if (auth.passwordSet() && !auth.verify(current)) throw new PanelError('The password is wrong.');
+      try {
+        if (on) await w.unlock.enable({ password });
+        else await w.unlock.disable();
+      } catch (e) { throw new PanelError(e.message); }
+    },
   };
   return { getState, actions, stop: () => updates.stop() };
 }

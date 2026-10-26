@@ -8,14 +8,14 @@ import { fileURLToPath } from 'node:url';
 const PAGE = fileURLToPath(new URL('./page.html', import.meta.url));
 const COOKIE = 'ispyx_panel';
 // Explicit whitelist; an action is also callable only if the host's `actions` object defines it.
-const ACTIONS = ['quit', 'setAutostart', 'setEffects', 'openLog', 'copy', 'close', 'requestPermission', 'openPermissionSettings', 'showConfigFile', 'clearRecent', 'addDeny', 'removeDeny', 'setPassword', 'setAuthRequired', 'update', 'checkUpdate'];
+const ACTIONS = ['quit', 'setAutostart', 'setEffects', 'openLog', 'copy', 'close', 'requestPermission', 'openPermissionSettings', 'showConfigFile', 'clearRecent', 'addDeny', 'removeDeny', 'setPassword', 'setAuthRequired', 'setUnlock', 'update', 'checkUpdate'];
 const BOOL_ACTIONS = new Set(['setAutostart', 'setEffects']);
 const STRING_ACTIONS = new Set(['copy', 'requestPermission', 'openPermissionSettings', 'addDeny']); // value must be a short string
-// value is an object of short strings (and a boolean for setAuthRequired.on)
-const OBJECT_ACTIONS = { setPassword: ['current', 'next'], setAuthRequired: ['current'], removeDeny: ['name', 'current'] };
+// value is an object of short strings (and a boolean for setAuthRequired.on / setUnlock.on)
+const OBJECT_ACTIONS = { setPassword: ['current', 'next'], setAuthRequired: ['current'], removeDeny: ['name', 'current'], setUnlock: ['password', 'current'] };
 const objectOk = (name, v) => {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
-  if (name === 'setAuthRequired' && typeof v.on !== 'boolean') return false;
+  if ((name === 'setAuthRequired' || name === 'setUnlock') && typeof v.on !== 'boolean') return false;
   return OBJECT_ACTIONS[name].every((k) => v[k] === undefined || (typeof v[k] === 'string' && v[k].length <= 200));
 };
 const PERMISSION_IDS = new Set(['accessibility', 'screen-recording']);

@@ -10,3 +10,4 @@ native/macos/**/.build/
 .claude/
 native/macos/build/
 native/macos/signing.local
+native/win32-unlock/provider/target/

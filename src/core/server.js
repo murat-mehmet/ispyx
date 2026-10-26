@@ -812,6 +812,21 @@ server.registerTool('set_clipboard', {
   return json({ ok: true, kind: 'file', path: p });
 }, { session: false }));
 
+server.registerTool('unlock', {
+  description: 'Unlocks the Windows session if it is currently locked, using the account password stored earlier in the panel ("Let the AI unlock this PC"). Takes no input. Fails if that feature was never turned on, or if the screen is not actually locked.',
+}, action('unlock', async () => {
+  if (!w.unlock) throw new ToolError('Unattended unlock is not available on this platform.');
+  if (!w.unlock.isEnabled()) throw new ToolError('Unattended unlock was never turned on. Ask the user to enable "Let the AI unlock this PC" in the panel.');
+  if (!w.isScreenLocked()) return json({ ok: true, alreadyUnlocked: true });
+  w.unlock.signal();
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    await w.sleep(300);
+    if (!w.isScreenLocked()) return json({ ok: true });
+  }
+  throw new ToolError('Signalled the unlock but the screen is still locked after 10 s. The stored password may be wrong, or the account may no longer qualify.');
+}, { session: false }));
+
 // ---------------------------------------------------------------- run
 
 process.on('exit', () => guard?.releaseAll());

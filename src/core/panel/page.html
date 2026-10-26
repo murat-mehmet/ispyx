@@ -156,6 +156,14 @@ button.link:hover{background:none;color:var(--fg)}
   </div>
 </section>
 
+<section id="sUnlock" hidden>
+  <h2>Unattended unlock</h2>
+  <div class="card">
+    <div class="item line" id="rUnlock" hidden><label for="unlockOn">Let the AI unlock this PC</label><span class="sw"><input type="checkbox" id="unlockOn"><i></i></span></div>
+    <div class="item" id="rUnlockNote" hidden><p class="note">Weakens the lock screen on purpose: stores this account's Windows password so the AI can unlock a locked session without you there. Needs a local account with a password (not a Microsoft-account PIN sign-in).</p></div>
+  </div>
+</section>
+
 <dialog id="dlg">
   <form id="dlgForm">
     <h3 id="dlgT"></h3>
@@ -317,6 +325,10 @@ function render(s){
   show("sSafe",hasPw||hasDeny||hasAuth);show("rPw",hasPw);show("rAuth",hasAuth);show("rDeny",hasDeny);
   if(hasPw){setText("pwTxt",s.passwordSet?"Password is set":"No password yet");setText("pwBtn",s.passwordSet?"Change…":"Set…")}
   if(hasAuth&&!busy.authOn)$("authOn").checked=s.authRequired;
+
+  var hasUnlock=typeof s.unlockSupported==="boolean";
+  show("sUnlock",hasUnlock);show("rUnlock",hasUnlock);show("rUnlockNote",hasUnlock);
+  if(hasUnlock&&!busy.unlockOn)$("unlockOn").checked=!!s.unlockEnabled;
   if(hasDeny){
     var d=$("deny"),sig=s.denylist.join("\n")+"|"+!!s.passwordSet;
     if(d.dataset.sig!==sig){ // rebuild only on change so a click is never lost to the 1 s refresh
@@ -416,6 +428,22 @@ $("authOn").addEventListener("change",function(){
     done();return;
   }
   act("setAuthRequired",{on:want,current:undefined}).catch(function(){box.checked=!want}).then(done);
+});
+$("unlockOn").addEventListener("change",function(){
+  var want=$("unlockOn").checked,box=$("unlockOn");
+  busy.unlockOn=true;
+  var done=function(){busy.unlockOn=false;poll()};
+  if(want){
+    box.checked=false;
+    ask("Let the AI unlock this PC",[{id:"password",label:"Windows password"}],"Turn on",function(v){return act("setUnlock",{on:true,password:v.password})});
+    done();return;
+  }
+  if(last&&last.passwordSet){
+    box.checked=true;
+    ask("Turn off unattended unlock",[{id:"current",label:"Ispyx password"}],"Turn off",function(v){return act("setUnlock",{on:false,current:v.current})});
+    done();return;
+  }
+  act("setUnlock",{on:false}).catch(function(){box.checked=true}).then(done);
 });
 function removeDeny(name){
   if(last&&last.passwordSet){
