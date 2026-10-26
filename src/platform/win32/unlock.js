@@ -13,7 +13,7 @@ const ROOT = 'C:\\ProgramData\\ispyx';
 const SECRET_PATH = path.join(ROOT, 'unlock.secret');
 const SIGNAL_PATH = path.join(ROOT, 'unlock.signal');
 const PROVIDER_DIR = fileURLToPath(new URL('../../../native/win32-unlock/provider/', import.meta.url));
-const DLL_PATH = path.join(PROVIDER_DIR, 'target', 'x86_64-pc-windows-gnu', 'release', 'ispyx_unlock.dll');
+const DLL_PATH = fileURLToPath(new URL('../../../native/win32-unlock/bin/ispyx_unlock.dll', import.meta.url));
 
 function run(cmd, args) {
   return new Promise((resolve) => {
@@ -124,7 +124,7 @@ export async function enable({ password }) {
 
 /** Panel action: unregisters the Credential Provider and deletes the stored secret (one UAC prompt). */
 export async function disable() {
-  const r = await runElevatedScript(path.join(PROVIDER_DIR, 'uninstall.ps1'), [DLL_PATH]);
+  const r = await runElevatedScript(path.join(PROVIDER_DIR, 'uninstall.ps1'), []);
   if (!r.ok) throw new Error(r.message);
 }
 

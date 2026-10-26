@@ -30,7 +30,7 @@ const mcp = async () => {
 try {
   // no resident yet: the first call starts one
   const a = await mcp();
-  ok((await a.listTools()).tools.length === 19, 'mcp lists the 19 tools');
+  ok((await a.listTools()).tools.length === 20, 'mcp lists the 20 tools');
   const r1 = await call(a, 'list_monitors');
   ok(!r1.isError && r1.text.includes('monitors'), 'mcp auto-started the resident and the call was forwarded', r1.text.slice(0, 40));
   ok(starts().length === 1, 'one resident started (one server_start)');

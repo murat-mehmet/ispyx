@@ -61,10 +61,17 @@ try {
 
     # regsvr32's exit code is not trustworthy with /s (confirmed in docs/unlock-windows.md); verify by reading
     # the registry back instead of trusting $LASTEXITCODE.
-    regsvr32.exe /s $DllPath 2>$null
+    # LogonUI loads this DLL as SYSTEM, so it must live somewhere only admins can write -- never in the npm
+    # package dir (user-writable): that would let any local user swap it and get code running as SYSTEM.
+    $installedDll = Join-Path $root 'ispyx_unlock.dll'
+    try { Copy-Item -Path $DllPath -Destination $installedDll -Force } catch {
+        # Already loaded by LogonUI from a previous install: keep it if it is byte-identical.
+        if (-not (Test-Path $installedDll) -or (Get-FileHash $installedDll).Hash -ne (Get-FileHash $DllPath).Hash) { throw }
+    }
+    regsvr32.exe /s $installedDll 2>$null
     $actual = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Classes\CLSID\{1aa7e1e6-21de-4ad5-ae6e-454401b4b427}\InprocServer32' -Name '(default)' -ErrorAction SilentlyContinue).'(default)'
-    if ($actual -ne $DllPath) {
-        throw "Registration did not take effect (registry has '$actual', expected '$DllPath')."
+    if ($actual -ne $installedDll) {
+        throw "Registration did not take effect (registry has '$actual', expected '$installedDll')."
     }
 
     Set-Content -Path $ResultFile -Value 'OK' -NoNewline

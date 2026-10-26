@@ -9,6 +9,9 @@
   },
   "files": [
     "src/",
+    "native/win32-unlock/bin/",
+    "native/win32-unlock/provider/install.ps1",
+    "native/win32-unlock/provider/uninstall.ps1",
     "README.md",
     "LICENSE",
     "config.example.json"
