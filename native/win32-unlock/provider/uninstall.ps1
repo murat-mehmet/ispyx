@@ -8,7 +8,7 @@ Set-StrictMode -Version 2
 $ErrorActionPreference = 'Continue' # best effort: still clean up what we can if one step fails
 
 $root = 'C:\ProgramData\ispyx'
-regsvr32.exe /u /s (Join-Path $root 'ispyx_unlock.dll') 2>$null
+Start-Process -FilePath regsvr32.exe -ArgumentList '/u', '/s', "`"$(Join-Path $root 'ispyx_unlock.dll')`"" -Wait -WindowStyle Hidden
 Remove-Item -Path (Join-Path $root 'unlock.secret') -Force -ErrorAction SilentlyContinue
 Remove-Item -Path (Join-Path $root 'unlock.signal') -Force -ErrorAction SilentlyContinue
 # May be held open by a running LogonUI until the next lock cycle; harmless once unregistered.

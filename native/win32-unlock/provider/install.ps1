@@ -68,7 +68,8 @@ try {
         # Already loaded by LogonUI from a previous install: keep it if it is byte-identical.
         if (-not (Test-Path $installedDll) -or (Get-FileHash $installedDll).Hash -ne (Get-FileHash $DllPath).Hash) { throw }
     }
-    regsvr32.exe /s $installedDll 2>$null
+    # regsvr32 is a GUI-subsystem exe: a bare call returns before it finishes, so the read-back below raced it.
+    Start-Process -FilePath regsvr32.exe -ArgumentList '/s', "`"$installedDll`"" -Wait -WindowStyle Hidden
     $actual = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Classes\CLSID\{1aa7e1e6-21de-4ad5-ae6e-454401b4b427}\InprocServer32' -Name '(default)' -ErrorAction SilentlyContinue).'(default)'
     if ($actual -ne $installedDll) {
         throw "Registration did not take effect (registry has '$actual', expected '$installedDll')."

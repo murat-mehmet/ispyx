@@ -107,13 +107,19 @@ export async function runUpdate() {
     // quietly: the `ispyx mcp` forwarders stay connected and reach the new resident on their next call
     try { await callOwner(pipe, '__restart', {}); } catch { /* gone before answering */ }
     for (let i = 0; i < 40 && await residentRunning(pipe); i++) await sleep(150);
+    // the pipe frees before the process has finished exiting; it still holds koffi.node (EBUSY) until then
+    await sleep(2000);
   }
   step('Installing the latest ispyx (npm install -g ispyx@latest)');
-  const code = await new Promise((resolve) => {
-    const c = spawn('npm', ['install', '-g', 'ispyx@latest'], { stdio: 'inherit', shell: true });
-    c.on('error', () => resolve(1));
-    c.on('exit', (n) => resolve(n ?? 1));
-  });
+  let code = 1;
+  for (let attempt = 0; attempt < 3 && code !== 0; attempt++) {
+    if (attempt) { step('Retrying (a file was still in use)'); await sleep(2500); }
+    code = await new Promise((resolve) => {
+      const c = spawn('npm', ['install', '-g', 'ispyx@latest'], { stdio: 'inherit', shell: true });
+      c.on('error', () => resolve(1));
+      c.on('exit', (n) => resolve(n ?? 1));
+    });
+  }
   if (code !== 0) process.stderr.write('ispyx: the update failed (see the npm output above).\n');
   // Start the new copy: npm replaced the files in place, so a fresh process loads them.
   if (wasRunning) { step('Starting ispyx'); spawnResident(); }
