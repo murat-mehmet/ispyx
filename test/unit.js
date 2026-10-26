@@ -133,7 +133,9 @@ check('ctrl+v counts as content insertion', insertsContent(parseSequence('ctrl+v
 }
 
 // password detection against our own Edit controls (Windows only: the window is made with user32)
-if (process.platform === 'win32') {
+if (process.platform === 'win32' && w.isScreenLocked()) {
+  console.log('SKIP  focusIsPassword (the screen is locked: no window can take the foreground)');
+} else if (process.platform === 'win32') {
   const user32 = koffi.load('user32.dll');
   const CreateWindowExW = user32.func('intptr_t CreateWindowExW(uint32, str16, str16, uint32, int, int, int, int, intptr_t, intptr_t, intptr_t, intptr_t)');
   const SetFocus = user32.func('intptr_t SetFocus(intptr_t)');
