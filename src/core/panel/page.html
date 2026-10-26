@@ -435,7 +435,9 @@ $("unlockOn").addEventListener("change",function(){
   var done=function(){busy.unlockOn=false;poll()};
   if(want){
     box.checked=false;
-    ask("Let the AI unlock this PC",[{id:"password",label:"Windows password"}],"Turn on",function(v){return act("setUnlock",{on:true,password:v.password})});
+    var fields=[{id:"password",label:"Windows password"}];
+    if(last&&last.passwordSet)fields.push({id:"current",label:"Ispyx password"});
+    ask("Let the AI unlock this PC",fields,"Turn on",function(v){return act("setUnlock",{on:true,password:v.password,current:v.current})});
     done();return;
   }
   if(last&&last.passwordSet){
