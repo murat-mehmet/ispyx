@@ -60,7 +60,7 @@ On macOS use `/Applications/Ispyx.app/Contents/Resources/ispyx` as the command, 
 
 ## Using it
 
-- **Panel.** Permissions (macOS), recent activity, effects, password, denylist, start at login, the connect command. Opens in its own small window and closes when you close it.
+- **Panel.** Permissions (macOS), recent activity, effects, password, denylist, unattended unlock, start at login, the connect command. Opens in its own small window and closes when you close it.
 - **Commands.** `ispyx` starts the resident app and opens the panel, `ispyx mcp` is the stdio server for an AI app, `ispyx quit` stops it, `ispyx update` installs the latest version and restarts it. On macOS they are `/Applications/Ispyx.app/Contents/Resources/ispyx update` / `quit` (the app starts the resident itself). Errors go to `%APPDATA%\ispyx\ispyx.log` (macOS: `~/Library/Application Support/Ispyx/ispyx.log`). Details: [src/core/RESIDENT.md](src/core/RESIDENT.md).
 - **Stop.** **Alt+Esc** (Option+Esc on macOS): one press cancels everything running, a second press within 5 s shuts the server down.
 - **Feedback.** A banner shows while a tool runs (green working, amber cancelled, red stopped). An eye and a scan line show on screenshots, clicks, scrolls and typing get small animations. All of it is click-through and can be turned off in the panel.
@@ -77,6 +77,7 @@ On macOS use `/Applications/Ispyx.app/Contents/Resources/ispyx` as the command, 
 | `type_text`, `press_keys`, `key_down`, `key_up` | Typing, hotkeys such as `ctrl+v`, hold and release. |
 | `get_clipboard`, `set_clipboard` | Read text; write text, an image or a file. |
 | `wait` | Pause up to 60 s. |
+| `unlock` | Unlock a locked screen with the password stored in the panel (opt-in, off by default). |
 
 Typical flow: `screenshot_screen`, read coordinates off the image, `click` (with `space: "shot"`) or `type_text`, then `screenshot_screen` to check. Coordinates and per-tool behaviour: [docs/behavior.md](docs/behavior.md). Input is human-paced: the pointer glides along a curved path, scrolling is smoothed, typing has natural pauses.
 
@@ -88,6 +89,7 @@ Typical flow: `screenshot_screen`, read coordinates off the image, `click` (with
 - **Password gate** (optional, set it in the panel): asks before the first tool call.
 - **Action log.** Every action, refusal and error is logged locally, including typed text (not text aimed at a password field). Clipboard reads log the length only.
 - **Elevated windows** cannot be controlled on Windows (UIPI), and neither can UAC prompts or the lock screen.
+- **Unattended unlock** (off by default; "Let the AI unlock this PC/Mac" in the panel) weakens the lock screen on purpose: it stores your login password (Windows: DPAPI for a Credential Provider; macOS: the Keychain) so the `unlock` tool can open a locked session with nobody at the computer. The AI never sees the password, each request tries once and never retries, and turning it off deletes the password. It cannot get past the FileVault screen after a restart. Details: [docs/unlock-windows.md](docs/unlock-windows.md), [docs/unlock-mac.md](docs/unlock-mac.md).
 - This gives an AI control of your computer. Connect it only to apps you trust.
 
 ## Configuration
