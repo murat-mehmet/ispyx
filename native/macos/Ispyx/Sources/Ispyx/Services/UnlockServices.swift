@@ -7,9 +7,8 @@ import Carbon.HIToolbox
 // "Let the AI unlock this Mac" (see docs/unlock-mac.md). The login password lives in a Keychain item owned by this
 // app; the Node side only ever says "store this", "forget it" and "try once". Nothing here logs or returns it.
 //
-// NOT VERIFIED ON A REAL MAC YET: written from the brief's design, not from a test. The open questions in
-// docs/unlock-mac.md (does a posted key reach the lock screen, is the first key swallowed by the wake, which lock
-// states work) still need answering; the timings below are guesses to tune.
+// Verified on a Mac (docs/unlock-mac.md, Results): posted keys reach the lock screen, also after the display has
+// turned off, and the timings below lose no character.
 
 private let keychainService = "com.ispyx.app.unlock"
 private var attemptRunning = false

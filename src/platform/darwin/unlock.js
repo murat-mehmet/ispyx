@@ -1,6 +1,6 @@
 // "Let the AI unlock this Mac" (docs/unlock-mac.md). The password goes into a Keychain item owned by Ispyx.app;
 // nothing on the Node side keeps it. Same shape as win32/unlock.js so the panel action and the `unlock` tool need
-// no per-platform code. NOT VERIFIED ON A REAL MAC YET (see the notes in UnlockServices.swift).
+// no per-platform code. Verified on a Mac, see the results in docs/unlock-mac.md.
 import { callSync } from './rpc.js';
 
 export const isEnabled = () => callSync('unlockEnabled') === true;

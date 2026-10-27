@@ -1,6 +1,6 @@
 # Unlocking the Mac from ispyx: research brief
 
-Status: written but NOT TESTED on a Mac (Keychain item, `UnlockServices.swift`, `src/platform/darwin/unlock.js`, panel toggle shared with Windows). The questions below are still open; answer them on a real Mac and tune the timings in `runAttempt`. This is for whoever works on the macOS side (Ispyx.app). Windows is being looked at separately.
+Status: built and verified on a Mac (see Results): the stored password unlocks the lock screen in about 2.3 s, also after the display has turned off. This is for whoever works on the macOS side (Ispyx.app). Windows is being looked at separately.
 
 ## The idea
 
@@ -38,13 +38,33 @@ Answer each with a test, not a guess, and write the result at the bottom of this
 
 Test on a Mac you can reach physically. Keep a second way in (another computer with Screen Sharing or SSH is handy) before you lock it. Start with a throwaway local account whose password you don't mind typing into logs. Do not test with the real account until the throwaway one works.
 
-## What is built (untested)
+## What is built
 
 - Panel toggle "Let the AI unlock this Mac" -> `setUnlock` -> `unlockStore(password)`: a generic-password Keychain item, service `com.ispyx.app.unlock`, account = the login name.
 - `unlock` tool (same as Windows): not locked -> `alreadyUnlocked`; locked -> `unlockRun`, then polls `isScreenLocked` for 10 s.
 - `unlockRun` (one attempt, background queue): declares user activity (wakes the display), moves the mouse, taps Shift, waits, types the password as unicode key events, taps Return. A second call while one runs does nothing; it never retries.
-- Guesses to verify: the 0.8 s / 0.7 s waits, whether Shift is enough to reach the password field, whether the login keychain is readable while locked, and whether a posted key is accepted by the lock screen at all (question 1, 5).
 
 ## Results
 
-(fill in)
+Tested 2026-10-27 on a MacBook Air (M1, MacBookAir10,1), macOS 26.6.2, FileVault on, Touch ID set up, the user's
+own account. Ispyx Dev (Apple Development signed) with Accessibility; Screen Recording is not needed. Driven over
+helper.sock: lock with ctrl+cmd+Q (`pressVirtualKeys`), wait, `unlockRun`, poll `isScreenLocked`.
+
+| Case | Result |
+|---|---|
+| Lock screen, unlock after 8 s | unlocked 2.2 s after `unlockRun` |
+| Lock screen, unlock after 15 s | unlocked after 2.3 s |
+| Lock screen left 90 s, display turned itself off (pmset log: off 12:21:15, on 12:22:15) | woke the display and unlocked after 2.3 s |
+
+Answers:
+
+1. Synthetic keys reach the lock screen: `CGEvent.post(tap: .cghidEventTap)` with Accessibility types into the password field. `.cgSessionEventTap` was not needed, so not tried.
+2. Wake: the user-activity assertion plus the mouse move wake a dark display; with the 0.8 s + Shift + 0.7 s waits no character of the password was lost (the user watched: nothing extra typed, nothing missing).
+3. Lock states: (c) the lock screen and (b) the display off on the lock screen work. (a) the screensaver was not tried (it is off on this Mac). (d) fast user switching was not tried. (e) the FileVault screen after a restart is out of reach by design.
+4. Touch ID: the lock screen offers Touch ID and the password field together; the typed password is accepted, no extra step.
+5. Secure Event Input does not block posted events.
+6. `isScreenLocked` is true within 0.3 s of ctrl+cmd+Q and false once unlocked. The app keeps running and answering the socket while locked.
+7. The lock screen is gone about 2.2-2.3 s after `unlockRun`; success is confirmed by `isScreenLocked` turning false (the tool's 10 s poll is plenty).
+- The login keychain is readable while the screen is locked, and reading the item raised no Keychain prompt (the item was created by the same app).
+- `pmset displaysleepnow` fails with error 1006 from a Claude Code shell (sandboxed or not); the display was turned off by waiting instead.
+- The Keychain item's access list belongs to the app that created it. Dev builds (com.ispyx.app.dev) and the release app share the service and account names, so turn the switch off in a dev build before going back to the release app; otherwise the release app sees an item it may not be able to read without a prompt.

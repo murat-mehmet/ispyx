@@ -134,4 +134,4 @@ Other platforms may lack these; callers must feature-test (`if (platform.Tray)`)
   runs as, so `enable` asks for just the password. `enable`/`disable` run an
   elevated `.ps1` in `native/win32-unlock/provider/` (one UAC prompt each); `signal()` never needs elevation.
   `checkAccount()` refuses PIN/Microsoft-account and passwordless sign-ins (no replayable secret exists for
-  those). macOS has the same export (`src/platform/darwin/unlock.js`, Keychain + synthetic keys, one attempt, not yet verified on a Mac, see `docs/unlock-mac.md`); there `checkAccount` always passes and `signal()` starts the one attempt. The `unlock` MCP tool (`src/core/server.js`) calls `signal()` then polls `isScreenLocked()`.
+  those). macOS has the same export (`src/platform/darwin/unlock.js`, Keychain + synthetic keys, one attempt, verified on a Mac, see `docs/unlock-mac.md`); there `checkAccount` always passes and `signal()` starts the one attempt. The `unlock` MCP tool (`src/core/server.js`) calls `signal()` then polls `isScreenLocked()`.
