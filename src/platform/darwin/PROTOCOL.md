@@ -58,6 +58,9 @@ arguments and `result` = the return value, JSON-encoded. Differences:
 - Overlay: `overlayShow({ text, kind })`, `overlayHide()`, `overlayVisible()`; the JS `Overlay` class holds the timers
   and texts exactly like the Windows one.
 - `showDialog(opts, ms)`: runs the native dialog in the app, result as in the contract.
+- Unlock (`unlock.js`): `unlockEnabled()` -> boolean (a Keychain item exists), `unlockStore(password)`, `unlockClear()`,
+  `unlockRun()` -> boolean (false when the screen is not locked; otherwise starts ONE attempt on a background queue and
+  returns at once; the caller polls `isScreenLocked`). The password never leaves the app except from the Keychain into key events.
 
 ### Layers (effect windows)
 

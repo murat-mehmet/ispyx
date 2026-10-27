@@ -12,9 +12,9 @@
 //
 //   getState() -> { version, platform, pid, uptimeMs, clients, recent: [{ time, tool, summary }],
 //                   stopLabel, effectsEnabled, passwordSet, denylist, autostart, connect (win32),
-//                   unlockSupported, unlockEnabled (win32 only, when platform.unlock exists) }
+//                   unlockSupported, unlockMac, unlockEnabled (when platform.unlock exists: win32, darwin) }
 //   actions    -> { quit(), setAutostart(bool), setEffects(bool), clearRecent(), showConfigFile(),
-//                   setUnlock({on, password, current}) (win32 only) }
+//                   setUnlock({on, password, current}) (win32, darwin) }
 //
 // Control calls over the pipe (names start with "__", handled here, never reach the tools):
 //   __ping -> 'pong'      __panel -> panel url ('' if none)      __quit -> 'bye' and the resident shuts down.
@@ -141,7 +141,7 @@ export function panelModel(ctx) {
     passwordSet: safe(() => auth.passwordSet(), false),
     authRequired: !!config.auth,
     denylist: config.denylist.slice(),
-    ...(w.unlock ? { unlockSupported: true, unlockEnabled: safe(() => w.unlock.isEnabled(), false) } : {}),
+    ...(w.unlock ? { unlockSupported: true, unlockMac: w.name === 'darwin', unlockEnabled: safe(() => w.unlock.isEnabled(), false) } : {}),
     ...(updates.state() ? { update: { ...updates.state(), ...(running ? running.progress() : {}) } } : {}),
   });
   const actions = {

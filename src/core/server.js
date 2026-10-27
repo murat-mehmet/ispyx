@@ -813,7 +813,7 @@ server.registerTool('set_clipboard', {
 }, { session: false }));
 
 server.registerTool('unlock', {
-  description: 'Unlocks the Windows session if it is currently locked, using the account password stored earlier in the panel ("Let the AI unlock this PC"). Takes no input. Fails if that feature was never turned on, or if the screen is not actually locked.',
+  description: 'Unlocks the session if the screen is currently locked, using the account password stored earlier in the panel ("Let the AI unlock this PC/Mac"). Takes no input. Fails if that feature was never turned on, or if the screen is not actually locked.',
 }, action('unlock', async () => {
   if (!w.unlock) throw new ToolError('Unattended unlock is not available on this platform.');
   if (!w.unlock.isEnabled()) throw new ToolError('Unattended unlock was never turned on. Ask the user to enable "Let the AI unlock this PC" in the panel.');

@@ -52,7 +52,7 @@ Sections, top to bottom: header (icon, headline, status, version/uptime/pid), Pe
 | `openPermissionSettings` | permission id | "Open Settings" |
 | `showConfigFile` | none | reveal `desktopConfigPath` (or its folder) |
 | `copy` | text | clipboard fallback; the page tries `navigator.clipboard` first |
-| `setUnlock` | `{on, password, current}` | win32 only; "Let the AI unlock this PC". Always the resident's own account. `current` is the ispyx panel password, asked for when one is set (same as `removeDeny`) |
+| `setUnlock` | `{on, password, current}` | win32 and macOS (`unlockMac` in the state picks the Mac wording); "Let the AI unlock this PC". Always the resident's own account. `current` is the ispyx panel password, asked for when one is set (same as `removeDeny`) |
 
 ## Windows server (`index.js`)
 

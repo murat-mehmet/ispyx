@@ -79,6 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // Implemented in Sources/Ispyx/Services/.
         registerInputServices(router)
+        registerUnlockServices(router)
         registerWindowServices(router)
         registerCaptureServices(router)
         registerPasteboardServices(router)

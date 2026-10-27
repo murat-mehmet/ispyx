@@ -1,6 +1,6 @@
 # Unlocking the Mac from ispyx: research brief
 
-Status: an idea, nothing is built. This is for whoever works on the macOS side (Ispyx.app). Windows is being looked at separately.
+Status: written but NOT TESTED on a Mac (Keychain item, `UnlockServices.swift`, `src/platform/darwin/unlock.js`, panel toggle shared with Windows). The questions below are still open; answer them on a real Mac and tune the timings in `runAttempt`. This is for whoever works on the macOS side (Ispyx.app). Windows is being looked at separately.
 
 ## The idea
 
@@ -37,6 +37,13 @@ Answer each with a test, not a guess, and write the result at the bottom of this
 ## Safe way to test
 
 Test on a Mac you can reach physically. Keep a second way in (another computer with Screen Sharing or SSH is handy) before you lock it. Start with a throwaway local account whose password you don't mind typing into logs. Do not test with the real account until the throwaway one works.
+
+## What is built (untested)
+
+- Panel toggle "Let the AI unlock this Mac" -> `setUnlock` -> `unlockStore(password)`: a generic-password Keychain item, service `com.ispyx.app.unlock`, account = the login name.
+- `unlock` tool (same as Windows): not locked -> `alreadyUnlocked`; locked -> `unlockRun`, then polls `isScreenLocked` for 10 s.
+- `unlockRun` (one attempt, background queue): declares user activity (wakes the display), moves the mouse, taps Shift, waits, types the password as unicode key events, taps Return. A second call while one runs does nothing; it never retries.
+- Guesses to verify: the 0.8 s / 0.7 s waits, whether Shift is enough to reach the password field, whether the login keychain is readable while locked, and whether a posted key is accepted by the lock screen at all (question 1, 5).
 
 ## Results
 

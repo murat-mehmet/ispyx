@@ -159,8 +159,8 @@ button.link:hover{background:none;color:var(--fg)}
 <section id="sUnlock" hidden>
   <h2>Unattended unlock</h2>
   <div class="card">
-    <div class="item line" id="rUnlock" hidden><label for="unlockOn">Let the AI unlock this PC</label><span class="sw"><input type="checkbox" id="unlockOn"><i></i></span></div>
-    <div class="item" id="rUnlockNote" hidden><p class="note">Weakens the lock screen on purpose: stores this account's Windows password so the AI can unlock a locked session without you there. Needs a local account with a password (not a Microsoft-account PIN sign-in).</p></div>
+    <div class="item line" id="rUnlock" hidden><label for="unlockOn" id="unlockLbl">Let the AI unlock this PC</label><span class="sw"><input type="checkbox" id="unlockOn"><i></i></span></div>
+    <div class="item" id="rUnlockNote" hidden><p class="note" id="unlockNote">Weakens the lock screen on purpose: stores this account's Windows password so the AI can unlock a locked session without you there. Needs a local account with a password (not a Microsoft-account PIN sign-in).</p></div>
   </div>
 </section>
 
@@ -329,6 +329,10 @@ function render(s){
   var hasUnlock=typeof s.unlockSupported==="boolean";
   show("sUnlock",hasUnlock);show("rUnlock",hasUnlock);show("rUnlockNote",hasUnlock);
   if(hasUnlock&&!busy.unlockOn)$("unlockOn").checked=!!s.unlockEnabled;
+  if(hasUnlock&&s.unlockMac){
+    setText("unlockLbl","Let the AI unlock this Mac");
+    setText("unlockNote","Weakens the lock screen on purpose: stores this Mac's login password in the Keychain so the AI can unlock a locked screen without you there. Tries once per request and never retries. Does not work at the FileVault screen after a restart.");
+  }
   if(hasDeny){
     var d=$("deny"),sig=s.denylist.join("\n")+"|"+!!s.passwordSet;
     if(d.dataset.sig!==sig){ // rebuild only on change so a click is never lost to the 1 s refresh
@@ -435,9 +439,9 @@ $("unlockOn").addEventListener("change",function(){
   var done=function(){busy.unlockOn=false;poll()};
   if(want){
     box.checked=false;
-    var fields=[{id:"password",label:"Windows password"}];
+    var fields=[{id:"password",label:last&&last.unlockMac?"Mac login password":"Windows password"}];
     if(last&&last.passwordSet)fields.push({id:"current",label:"Ispyx password"});
-    ask("Let the AI unlock this PC",fields,"Turn on",function(v){return act("setUnlock",{on:true,password:v.password,current:v.current})});
+    ask(last&&last.unlockMac?"Let the AI unlock this Mac":"Let the AI unlock this PC",fields,"Turn on",function(v){return act("setUnlock",{on:true,password:v.password,current:v.current})});
     done();return;
   }
   if(last&&last.passwordSet){

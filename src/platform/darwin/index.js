@@ -11,6 +11,7 @@ export { parseChord, parseSequence, insertsContent } from './keys.js';
 export { Layer, textMask } from './layer.js';
 export { onEvent } from './rpc.js';
 export { servePanel } from './panel.js';
+export * as unlock from './unlock.js';
 
 export const name = 'darwin';
 export const capabilities = { elevation: false };
