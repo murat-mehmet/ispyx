@@ -180,7 +180,7 @@ final class SocketServer {
     // MARK: reading
 
     private func readFrom(_ conn: ClientConnection) {
-        // A handler may spin a nested run loop (the password dialog): never re-enter for the same client.
+        // Never re-enter for the same client (a handler that spins the run loop would read the next line too early).
         if conn.closed || conn.processing { return }
         let n = readChunk.withUnsafeMutableBytes { raw -> Int in
             return read(conn.fd, raw.baseAddress, raw.count)
@@ -230,21 +230,26 @@ final class SocketServer {
         if let id = obj["id"] { resp["id"] = id }
         let fn = obj["fn"] as? String ?? ""
         let args = obj["args"] as? [Any] ?? []
-        do {
-            LayerRegistry.shared.currentOwner = conn.fd
-            defer { LayerRegistry.shared.currentOwner = -1 }
-            let result = try router.call(fn, args)
-            resp["ok"] = true
-            resp["result"] = result ?? NSNull()
-        } catch let e as HelperError {
-            resp["ok"] = false
-            resp["error"] = e.message
-            onHelperError?(e.message)
-        } catch {
-            resp["ok"] = false
-            resp["error"] = "The Ispyx app failed: \(error.localizedDescription)"
+        LayerRegistry.shared.currentOwner = conn.fd
+        defer { LayerRegistry.shared.currentOwner = -1 }
+        // An async handler (the password window) answers later; other calls from the same client go on meanwhile.
+        router.call(fn, args) { [weak self, weak conn] outcome in
+            guard let self = self, let conn = conn else { return }
+            var resp = resp
+            switch outcome {
+            case .success(let result):
+                resp["ok"] = true
+                resp["result"] = result ?? NSNull()
+            case .failure(let e as HelperError):
+                resp["ok"] = false
+                resp["error"] = e.message
+                self.onHelperError?(e.message)
+            case .failure(let error):
+                resp["ok"] = false
+                resp["error"] = "The Ispyx app failed: \(error.localizedDescription)"
+            }
+            self.send(resp, to: conn)
         }
-        send(resp, to: conn)
     }
 
     // MARK: writing

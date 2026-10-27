@@ -11,16 +11,27 @@ struct HelperError: Error {
 /// Handlers are called on the main thread, one at a time, so they may touch AppKit and CoreGraphics freely.
 final class Router {
     typealias Handler = (_ args: [Any]) throws -> Any?
+
+    /// A handler that answers later (the password window): it gets the arguments and a reply to call once, on the main thread.
+    typealias AsyncHandler = (_ args: [Any], _ reply: @escaping (Result<Any?, Error>) -> Void) throws -> Void
     private var handlers: [String: Handler] = [:]
+    private var asyncHandlers: [String: AsyncHandler] = [:]
 
     func register(_ name: String, _ handler: @escaping Handler) { handlers[name] = handler }
+    func registerAsync(_ name: String, _ handler: @escaping AsyncHandler) { asyncHandlers[name] = handler }
 
-    func call(_ name: String, _ args: [Any]) throws -> Any? {
-        guard let handler = handlers[name] else { throw HelperError("The Ispyx app does not know the function \(name). Update the app.") }
-        return try handler(args)
+    /// Runs `name` and calls `reply` with its outcome, at once for a plain handler, later for an async one.
+    func call(_ name: String, _ args: [Any], reply: @escaping (Result<Any?, Error>) -> Void) {
+        do {
+            if let handler = asyncHandlers[name] { return try handler(args, reply) }
+            guard let handler = handlers[name] else { throw HelperError("The Ispyx app does not know the function \(name). Update the app.") }
+            reply(.success(try handler(args)))
+        } catch {
+            reply(.failure(error))
+        }
     }
 
-    var names: [String] { handlers.keys.sorted() }
+    var names: [String] { (Array(handlers.keys) + Array(asyncHandlers.keys)).sorted() }
 }
 
 /// App -> client events (no request id): `stop` when the stop chord is pressed, `permissions` when one is missing.

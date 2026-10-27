@@ -2,7 +2,8 @@ import AppKit
 import Foundation
 
 /// The password window of the auth gate (setup: password + repeat, unlock: password).
-/// run() blocks the caller in a nested event loop until the window ends, so the Router handler can simply return the result.
+/// show() returns at once; the window calls `done` with the result when it ends, so the app keeps answering other calls
+/// (the stop key poll among them) while it is open.
 final class PasswordDialog: NSObject, NSWindowDelegate {
     static var active = false
 
@@ -17,6 +18,9 @@ final class PasswordDialog: NSObject, NSWindowDelegate {
     private var timer: Timer?
     private var remaining: Int
     private var finished = false
+    private var done: (([String: Any]) -> Void)?
+    /// The open window, kept alive until it ends.
+    private static var current: PasswordDialog?
     private var result: [String: Any] = ["cancel": true, "reason": "closed by the user"]
 
     init(options: [String: Any], seconds: Int) {
@@ -188,11 +192,18 @@ final class PasswordDialog: NSObject, NSWindowDelegate {
         timer = nil
         window.delegate = nil
         window.orderOut(nil)
+        PasswordDialog.active = false
+        PasswordDialog.current = nil
+        done?(r)
+        done = nil
     }
 
     // MARK: run
 
-    func run() -> [String: Any] {
+    func show(_ done: @escaping ([String: Any]) -> Void) {
+        self.done = done
+        PasswordDialog.active = true
+        PasswordDialog.current = self
         let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in self?.tick() }
         RunLoop.main.add(t, forMode: .common)
         timer = t
@@ -201,29 +212,17 @@ final class PasswordDialog: NSObject, NSWindowDelegate {
         window.center()
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(passwordField)
-
-        // Nested event loop: AppKit events must be dequeued and dispatched by hand here.
-        while !finished {
-            if let event = NSApp.nextEvent(matching: .any, until: Date(timeIntervalSinceNow: 0.1),
-                                           inMode: .default, dequeue: true) {
-                NSApp.sendEvent(event)
-            }
-        }
-        return result
     }
 }
 
 func registerDialogServices(_ r: Router) {
-    r.register("showDialog") { args in
+    r.registerAsync("showDialog") { args, reply in
         let opts = try args.object(0)
         let ms = (args.count > 1 ? (args[1] as? NSNumber)?.doubleValue : nil) ?? 30000
         if PasswordDialog.active {
             throw HelperError("A password window is already open. Answer or close it first.")
         }
-        PasswordDialog.active = true
-        defer { PasswordDialog.active = false }
         let seconds = Int((ms / 1000.0).rounded(.up))
-        let dialog = PasswordDialog(options: opts, seconds: seconds)
-        return dialog.run()
+        PasswordDialog(options: opts, seconds: seconds).show { reply(.success($0)) }
     }
 }
