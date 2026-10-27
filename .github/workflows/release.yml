@@ -39,6 +39,7 @@ jobs:
   macos:
     needs: check
     runs-on: macos-15
+    timeout-minutes: 120 # a hung notary upload must not hold the release for 6 hours
     env:
       VERSION: ${{ needs.check.outputs.version }}
       HAS_CERT: ${{ secrets.MACOS_CERTIFICATE_P12 != '' }}

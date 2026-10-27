@@ -171,6 +171,22 @@ staple() {
   return 0
 }
 
+# The upload to Apple's notary service sometimes hangs with no output (seen in CI: stuck after "initiating
+# connection"). Give each try 30 minutes, then submit again; a second submission of the same file is harmless.
+notarize() {
+  for attempt in 1 2 3; do
+    xcrun notarytool submit "$1" --keychain-profile "$NOTARY_PROFILE" --wait --timeout 25m &
+    local pid=$!
+    ( sleep 1800; kill "$pid" 2>/dev/null ) &
+    local dog=$!
+    if wait "$pid"; then kill "$dog" 2>/dev/null || true; return 0; fi
+    kill "$dog" 2>/dev/null || true
+    echo "    notarisation failed or timed out (attempt $attempt)"
+  done
+  echo "::error::Could not notarise $(basename "$1")."
+  return 1
+}
+
 # ---- 4. notarisation (needs SIGN_IDENTITY and NOTARY_PROFILE) -----------------------------------
 NOTARISE=0
 if [ -n "$SIGN_IDENTITY" ] && [ -n "$NOTARY_PROFILE" ]; then NOTARISE=1; fi
@@ -181,7 +197,7 @@ if [ "$NOTARISE" = "1" ]; then
   ZIP="$OUT/Ispyx-notarize.zip"
   rm -f "$ZIP"
   ditto -c -k --keepParent "$APP" "$ZIP"
-  xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
+  notarize "$ZIP"
   rm -f "$ZIP"
   staple "$APP"
 else
@@ -204,7 +220,7 @@ if [ -n "$SIGN_IDENTITY" ]; then
 fi
 if [ "$NOTARISE" = "1" ]; then
   echo "==> notarising the disk image"
-  xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+  notarize "$DMG"
   staple "$DMG"
 fi
 
