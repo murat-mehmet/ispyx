@@ -15,7 +15,7 @@ import { ScanAnimation, keyLabels } from '../effects/scan.js';
 import { pipeName, listenOwner, callOwner, watchOwner, OwnerGone } from './ipc.js';
 import { resolveMode } from './mode.js';
 import { ensureResident, useMacAppResident } from './launcher.js';
-import { panelModel, recordCall, setupLogging, startResident } from './resident.js';
+import { VERSION, panelModel, recordCall, setupLogging, startResident } from './resident.js';
 
 const { parseSequence, insertsContent, Overlay, installStopHotkey } = w;
 
@@ -259,7 +259,7 @@ const json = (o) => text(JSON.stringify(o));
 // Sent to the client in the initialize result; MCP clients add it to the model's context.
 const INSTRUCTIONS = 'Long text: for text longer than about 200 characters, call set_clipboard with the text and then press_keys "ctrl+v" instead of type_text. Pasting is instant and reliable; type_text types one character at a time and is meant for short input, or for fields that refuse paste.';
 
-const server = new McpServer({ name: 'ispyx', version: '2.0.0' }, { instructions: INSTRUCTIONS });
+const server = new McpServer({ name: 'ispyx', version: VERSION }, { instructions: INSTRUCTIONS });
 {
   const register = server.registerTool.bind(server);
   server.registerTool = (name, cfg, handler) => {

@@ -35,7 +35,7 @@ const MAX_LOG = 256 * 1024;
 export const recent = [];
 let totalCalls = 0; // since this resident started
 
-const VERSION = (() => {
+export const VERSION = (() => {
   try { return JSON.parse(fs.readFileSync(fileURLToPath(new URL('../../package.json', import.meta.url)), 'utf8')).version; } catch { return '0.0.0'; }
 })();
 
