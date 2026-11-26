@@ -256,7 +256,10 @@ const MOD_KEY = (m) => w.parseChord(m)[0]; // platform key code of a modifier na
 const text = (s) => ({ content: [{ type: 'text', text: s }] });
 const json = (o) => text(JSON.stringify(o));
 
-const server = new McpServer({ name: 'ispyx', version: '2.0.0' });
+// Sent to the client in the initialize result; MCP clients add it to the model's context.
+const INSTRUCTIONS = 'Long text: for text longer than about 200 characters, call set_clipboard with the text and then press_keys "ctrl+v" instead of type_text. Pasting is instant and reliable; type_text types one character at a time and is meant for short input, or for fields that refuse paste.';
+
+const server = new McpServer({ name: 'ispyx', version: '2.0.0' }, { instructions: INSTRUCTIONS });
 {
   const register = server.registerTool.bind(server);
   server.registerTool = (name, cfg, handler) => {
@@ -674,7 +677,7 @@ async function keyboardTarget(args, entry) {
 }
 
 server.registerTool('type_text', {
-  description: 'Type text into the focused control using Unicode key events, one character at a time at a human pace (random 60-200 ms per character; very long text is sped up to finish within 60 s, use set_clipboard + ctrl+v for bulk text). `speed` divides the waits: 1 = normal, 2 = twice as fast, 0.5 = half as fast, 0 = a fixed 8 ms after every character (the fastest allowed; no wait is ever shorter, and text is never sent in one batch). The 60 s cap applies after `speed`. (Turkish and other non-ASCII characters work). Refused when the focused control is a password field. Pass hwnd/title to focus a window first; otherwise the current foreground window gets the text.',
+  description: 'For text longer than about 200 characters, do not use this tool: call set_clipboard with the text, then press_keys "ctrl+v". Use type_text for short input, or for fields that refuse paste. Types text into the focused control using Unicode key events, one character at a time at a human pace (random 60-200 ms per character; very long text is sped up to finish within 60 s). `speed` divides the waits: 1 = normal, 2 = twice as fast, 0.5 = half as fast, 0 = a fixed 8 ms after every character (the fastest allowed; no wait is ever shorter, and text is never sent in one batch). The 60 s cap applies after `speed`. (Turkish and other non-ASCII characters work). Refused when the focused control is a password field. Pass hwnd/title to focus a window first; otherwise the current foreground window gets the text.',
   inputSchema: { ...target, text: z.string().min(1), speed: z.number().min(0).max(100).optional().describe('Typing speed multiplier for the waits between characters. Default 1; 2 halves the waits, 0.5 doubles them, 0 = fixed 8 ms per character (fastest).') },
 }, action('type_text', async (args, entry) => {
   if (args.text.length > config.maxTypeLength) throw new ToolError(`Text is longer than ${config.maxTypeLength} characters. Use set_clipboard and ctrl+v for long text.`);
@@ -793,7 +796,7 @@ function setImageClipboard(imagePath) {
 }
 
 server.registerTool('set_clipboard', {
-  description: 'Put text, an image, or a file on the clipboard so it can be pasted with ctrl+v (long captions, uploads). Give exactly one of text, imagePath (pastes as a picture) or filePath (pastes as a file, as copied in Explorer).',
+  description: 'Put text, an image, or a file on the clipboard so it can be pasted with ctrl+v (long captions, uploads). Preferred over type_text for text longer than about 200 characters: set_clipboard, then press_keys "ctrl+v". Give exactly one of text, imagePath (pastes as a picture) or filePath (pastes as a file, as copied in Explorer).',
   inputSchema: { text: z.string().optional(), imagePath: z.string().optional(), filePath: z.string().optional() },
 }, action('set_clipboard', async (args, entry) => {
   const given = ['text', 'imagePath', 'filePath'].filter((k) => args[k] !== undefined);
